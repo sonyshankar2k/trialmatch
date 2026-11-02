@@ -1,0 +1,48 @@
+# One command starts everything:  docker compose up --build
+#   App:       http://localhost:8080   (demo: alice@trialmatch.dev / trialmatch-demo)
+#   API docs:  http://localhost:3000/api/docs
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: trialmatch
+      POSTGRES_PASSWORD: trialmatch
+      POSTGRES_DB: trialmatch
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U trialmatch']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgres://trialmatch:trialmatch@db:5432/trialmatch
+      # Local demo only. Anywhere real, use a long random secret from a secrets manager.
+      JWT_SECRET: local-docker-secret-change-me-0123456789abcdef
+      CORS_ORIGINS: http://localhost:8080,http://localhost:4200
+      SEED_DEMO_DATA: 'true'
+    ports:
+      - '3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - '8080:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

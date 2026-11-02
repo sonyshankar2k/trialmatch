@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/test-output
+**/coverage
+.nx
+.git
+.env
