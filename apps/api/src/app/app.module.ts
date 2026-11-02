@@ -8,6 +8,7 @@ import { ApiExceptionFilter } from './common/errors';
 import { validateEnv } from './config';
 import { DatabaseModule } from './db/database';
 import { HealthController } from './health.controller';
+import { MatchingModule } from './matching/matching.module';
 import { PatientsModule } from './patients/patients.module';
 import { TrialsModule } from './trials/trials.module';
 
@@ -20,6 +21,7 @@ import { TrialsModule } from './trials/trials.module';
     AuthModule,
     TrialsModule,
     PatientsModule,
+    MatchingModule,
   ],
   controllers: [HealthController],
   providers: [

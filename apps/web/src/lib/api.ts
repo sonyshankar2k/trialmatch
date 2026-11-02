@@ -69,3 +69,47 @@ export function errorMessage(
     return 'Cannot reach the server. Check your connection and try again.';
   return fallback;
 }
+
+/**
+ * Server-Sent Events over fetch (EventSource can't send an Authorization header).
+ * Calls onEvent for each `data:` message until the server ends the stream or `signal` aborts.
+ */
+export async function streamEvents<T>(
+  path: string,
+  onEvent: (event: T) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const token = tokenStore.get();
+  const res = await fetch(new URL(`/api${path}`, window.location.origin), {
+    headers: {
+      Accept: 'text/event-stream',
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const body = await res
+      .json()
+      .catch(() => ({ statusCode: res.status, message: res.statusText }));
+    if (res.status === 401 && token) onUnauthorized();
+    throw new ApiRequestError(res.status, body as ApiError);
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += value;
+    let end: number;
+    while ((end = buffer.indexOf('\n\n')) !== -1) {
+      const message = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const data = message
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n');
+      if (data) onEvent(JSON.parse(data) as T);
+    }
+  }
+}

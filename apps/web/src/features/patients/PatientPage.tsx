@@ -8,6 +8,7 @@ import {
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router';
+import { MatchPanel } from '../matching/MatchPanel';
 import { ConflictBanner } from '../../components/ConflictBanner';
 import { Field, fieldProps } from '../../components/Field';
 import { TagInput } from '../../components/TagInput';
@@ -63,7 +64,14 @@ function ExistingPatient({ id }: { id: number }) {
         {errorMessage(error)}
       </p>
     );
-  return <PatientEditor key={data.id} patient={data} />;
+  return (
+    <>
+      <PatientEditor key={data.id} patient={data} />
+      <div className="max-w-3xl">
+        <MatchPanel patientId={data.id} />
+      </div>
+    </>
+  );
 }
 
 function PatientEditor({ patient }: { patient?: Patient }) {
@@ -273,7 +281,7 @@ function PatientEditor({ patient }: { patient?: Patient }) {
           id="notes"
           label="Clinical notes"
           error={errors.notes?.message}
-          hint="Labs, history. AI matching (coming next) reads this."
+          hint="Labs, history. Trial matching reads this."
           className="sm:col-span-3"
         >
           <textarea

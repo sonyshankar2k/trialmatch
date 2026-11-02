@@ -5,3 +5,4 @@ export * from './lib/common.js';
 export * from './lib/auth.js';
 export * from './lib/trials.js';
 export * from './lib/patients.js';
+export * from './lib/matching.js';

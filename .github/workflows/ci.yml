@@ -72,7 +72,12 @@ jobs:
           TOKEN=$(curl -sf -X POST http://localhost:8080/api/auth/login \
             -H 'Content-Type: application/json' \
             -d '{"email":"alice@trialmatch.dev","password":"trialmatch-demo"}' | jq -r .accessToken)
-          curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/trials | jq -e '.total == 5'
+          AUTH="Authorization: Bearer $TOKEN"
+          curl -sf -H "$AUTH" http://localhost:8080/api/trials | jq -e '.total == 5'
+          # A match run goes through the BullMQ worker; its progress streams through nginx.
+          RUN=$(curl -sf -X POST -H "$AUTH" http://localhost:8080/api/patients/1/match-runs | jq -r .id)
+          timeout 60 curl -sfN -H "$AUTH" http://localhost:8080/api/match-runs/$RUN/events | tee events.txt > /dev/null
+          grep -q '"status":"succeeded"' events.txt
       - name: Container logs
         if: failure()
         run: docker compose logs --no-color --tail 200

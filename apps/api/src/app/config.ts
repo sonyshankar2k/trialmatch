@@ -31,6 +31,17 @@ export const EnvSchema = z.object({
         .map((s) => s.trim())
         .filter(Boolean),
     ),
+  // ---- Week 2: AI matching ----
+  /** Redis for the BullMQ job queue and live events. Without it, matching runs in-process. */
+  REDIS_URL: z.string().optional(),
+  /** "auto" uses Claude when ANTHROPIC_API_KEY is set, otherwise the rule-based engine. */
+  MATCH_ENGINE: z.enum(['auto', 'claude', 'rules']).default('auto'),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-5-5'),
+  /** How many candidate trials are assessed per run. */
+  MATCH_MAX_TRIALS: z.coerce.number().int().min(1).max(20).default(5),
+  /** Pause between trials so progress is visible in a demo. 0 in tests. */
+  MATCH_STEP_DELAY_MS: z.coerce.number().int().min(0).max(5000).default(0),
   SEED_DEMO_DATA: z
     .enum(['true', 'false'])
     .default('true')

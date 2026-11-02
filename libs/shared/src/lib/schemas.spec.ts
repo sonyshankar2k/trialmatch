@@ -1,4 +1,5 @@
 import {
+  decideEligibility,
   LoginSchema,
   PatientCreateSchema,
   TrialCreateSchema,
@@ -63,5 +64,49 @@ describe('shared schemas', () => {
       PatientCreateSchema.safeParse({ ...patient, pseudonym: 'Jane Smith' })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('decideEligibility', () => {
+  const inc = (verdict: 'met' | 'not_met' | 'unknown') => ({
+    type: 'inclusion' as const,
+    verdict,
+  });
+  const exc = (verdict: 'met' | 'not_met' | 'unknown') => ({
+    type: 'exclusion' as const,
+    verdict,
+  });
+
+  it('is eligible only when every criterion points the right way', () => {
+    expect(decideEligibility([inc('met'), exc('not_met')])).toEqual({
+      eligibility: 'eligible',
+      score: 100,
+    });
+  });
+
+  it('needs review when anything is unknown', () => {
+    expect(decideEligibility([inc('met'), exc('unknown')])).toEqual({
+      eligibility: 'possibly_eligible',
+      score: 50,
+    });
+  });
+
+  it('is not eligible when an exclusion is met or an inclusion is not met, even with unknowns', () => {
+    expect(decideEligibility([inc('met'), exc('met')]).eligibility).toBe(
+      'not_eligible',
+    );
+    expect(
+      decideEligibility([inc('not_met'), exc('unknown')]).eligibility,
+    ).toBe('not_eligible');
+    expect(
+      decideEligibility([inc('met'), inc('met'), inc('met'), exc('met')]).score,
+    ).toBeLessThanOrEqual(40);
+  });
+
+  it('handles a trial with no criteria', () => {
+    expect(decideEligibility([])).toEqual({
+      eligibility: 'eligible',
+      score: 0,
+    });
   });
 });
