@@ -23,6 +23,7 @@ module.exports = {
   },
   // Integration tests share one test database, so they run one file at a time.
   maxWorkers: 1,
+  setupFiles: ['<rootDir>/src/test/env.ts'],
   testTimeout: 20000,
   coverageDirectory: 'test-output/jest/coverage',
 };

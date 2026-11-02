@@ -10,10 +10,12 @@ import request from 'supertest';
 import { AppModule } from '../app/app.module';
 import { configureApp } from '../app/setup';
 
-process.env['DATABASE_URL'] =
-  process.env['TEST_DATABASE_URL'] ??
-  'postgres://trialmatch:trialmatch@localhost:5432/trialmatch_test';
-process.env['SEED_DEMO_DATA'] = 'false';
+// The test database and other settings come from ./env.ts (Jest setupFiles).
+if (!process.env['DATABASE_URL']?.includes('test')) {
+  throw new Error(
+    `Refusing to run tests against a non-test database: ${process.env['DATABASE_URL']}`,
+  );
+}
 
 export interface TestContext {
   app: INestApplication;
