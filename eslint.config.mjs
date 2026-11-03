@@ -11,6 +11,9 @@ export default [
       '**/vitest.config.*.timestamp*',
       '**/vite.config.*.timestamp*',
       '**/test-output',
+      '**/storybook-static',
+      '**/playwright-report',
+      '**/test-results',
     ],
   },
   {

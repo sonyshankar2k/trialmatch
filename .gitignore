@@ -60,3 +60,10 @@ vite.config.*.timestamp*
 
 # Redis snapshot from local runs
 dump.rdb
+
+# Storybook build
+storybook-static
+
+# Playwright
+playwright-report
+test-results

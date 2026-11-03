@@ -8,3 +8,6 @@
 apps/api/src/app/db/migrations
 package-lock.json
 *.md
+**/storybook-static
+**/playwright-report
+**/test-results

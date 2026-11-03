@@ -12,6 +12,9 @@ import { AuthService } from './auth.service';
 import { CurrentUser, type AuthUser } from './current-user.decorator';
 import { Public } from './public.decorator';
 
+/** Read per request, so tests and CI can raise it with AUTH_RATE_LIMIT_PER_MINUTE. */
+const authLimit = () => Number(process.env['AUTH_RATE_LIMIT_PER_MINUTE'] ?? 10);
+
 class RegisterDto extends createZodDto(RegisterSchema) {}
 class LoginDto extends createZodDto(LoginSchema) {}
 
@@ -21,14 +24,14 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60_000 } }) // slows down password guessing
+  @Throttle({ default: { limit: authLimit, ttl: 60_000 } }) // slows down password guessing
   @Post('register')
   register(@Body() body: RegisterDto): Promise<AuthResponse> {
     return this.auth.register(body);
   }
 
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: authLimit, ttl: 60_000 } })
   @HttpCode(200)
   @Post('login')
   login(@Body() body: LoginDto): Promise<AuthResponse> {

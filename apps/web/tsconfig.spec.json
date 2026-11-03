@@ -33,7 +33,9 @@
     "src/**/*.d.ts",
     "src/testing/**/*.ts",
     "src/testing/**/*.tsx",
-    "src/test-setup.ts"
+    "src/test-setup.ts",
+    ".storybook/*.ts",
+    ".storybook/*.tsx"
   ],
   "references": [
     {

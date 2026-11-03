@@ -111,12 +111,8 @@
           "name": "match_results_run_id_match_runs_id_fk",
           "tableFrom": "match_results",
           "tableTo": "match_runs",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -124,12 +120,8 @@
           "name": "match_results_trial_id_trials_id_fk",
           "tableFrom": "match_results",
           "tableTo": "trials",
-          "columnsFrom": [
-            "trial_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trial_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -245,12 +237,8 @@
           "name": "match_runs_patient_id_patients_id_fk",
           "tableFrom": "match_runs",
           "tableTo": "patients",
-          "columnsFrom": [
-            "patient_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["patient_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -258,12 +246,8 @@
           "name": "match_runs_owner_id_users_id_fk",
           "tableFrom": "match_runs",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -379,12 +363,8 @@
           "name": "patients_owner_id_users_id_fk",
           "tableFrom": "patients",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -465,12 +445,8 @@
           "name": "trial_criteria_trial_id_trials_id_fk",
           "tableFrom": "trial_criteria",
           "tableTo": "trials",
-          "columnsFrom": [
-            "trial_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trial_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -645,12 +621,8 @@
           "name": "trials_created_by_id_users_id_fk",
           "tableFrom": "trials",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -731,56 +703,32 @@
     "public.criterion_type": {
       "name": "criterion_type",
       "schema": "public",
-      "values": [
-        "inclusion",
-        "exclusion"
-      ]
+      "values": ["inclusion", "exclusion"]
     },
     "public.eligibility": {
       "name": "eligibility",
       "schema": "public",
-      "values": [
-        "eligible",
-        "possibly_eligible",
-        "not_eligible"
-      ]
+      "values": ["eligible", "possibly_eligible", "not_eligible"]
     },
     "public.match_run_status": {
       "name": "match_run_status",
       "schema": "public",
-      "values": [
-        "queued",
-        "running",
-        "succeeded",
-        "failed"
-      ]
+      "values": ["queued", "running", "succeeded", "failed"]
     },
     "public.patient_sex": {
       "name": "patient_sex",
       "schema": "public",
-      "values": [
-        "female",
-        "male"
-      ]
+      "values": ["female", "male"]
     },
     "public.trial_phase": {
       "name": "trial_phase",
       "schema": "public",
-      "values": [
-        "Phase 1",
-        "Phase 2",
-        "Phase 3",
-        "Phase 4"
-      ]
+      "values": ["Phase 1", "Phase 2", "Phase 3", "Phase 4"]
     },
     "public.trial_sex": {
       "name": "trial_sex",
       "schema": "public",
-      "values": [
-        "all",
-        "female",
-        "male"
-      ]
+      "values": ["all", "female", "male"]
     },
     "public.trial_status": {
       "name": "trial_status",

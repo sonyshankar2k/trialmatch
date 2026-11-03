@@ -31,6 +31,13 @@ export const EnvSchema = z.object({
         .map((s) => s.trim())
         .filter(Boolean),
     ),
+  /** Sign-in and sign-up attempts allowed per client per minute (slows password guessing). */
+  AUTH_RATE_LIMIT_PER_MINUTE: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10_000)
+    .default(10),
   // ---- Week 2: AI matching ----
   /** Redis for the BullMQ job queue and live events. Without it, matching runs in-process. */
   REDIS_URL: z.string().optional(),

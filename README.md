@@ -2,7 +2,7 @@
 
 **Match patients to clinical trials.** Research coordinators keep a catalog of clinical trials with their eligibility criteria and a private list of de-identified patient profiles. One click finds the trials a patient could join: Claude checks the profile against every inclusion and exclusion criterion and explains each verdict, while a background worker streams progress live to the browser.
 
-Built with **React 19 · TypeScript · NestJS · PostgreSQL · Drizzle ORM · Claude API · BullMQ · Redis · Server-Sent Events · Zod · TanStack Query · React Hook Form · Tailwind CSS · Nx monorepo · Docker · GitHub Actions**.
+Built with **React 19 · TypeScript · NestJS · PostgreSQL · Drizzle ORM · Claude API · BullMQ · Redis · Server-Sent Events · Zod · TanStack Query · React Hook Form · Tailwind CSS · Storybook · Playwright · Nx monorepo · Docker · GitHub Actions**.
 
 ---
 
@@ -25,6 +25,8 @@ Built with **React 19 · TypeScript · NestJS · PostgreSQL · Drizzle ORM · Cl
 | **Optimistic concurrency** | Every record has a `version`. Saves send only the changed fields plus the version they read; a stale save gets **409** with the current record, and the UI offers **Load their version** or **Save mine anyway** |
 | **Consistent errors** | Every error has one shape (`ApiError`). Validation errors carry field-level messages that the forms show on the right field, including server-only checks such as a duplicate NCT ID |
 | **Migrations** | Drizzle generates SQL migrations from the schema; the API applies them at startup under a PostgreSQL advisory lock, so two replicas never migrate at once. CI fails if the schema changes without a migration |
+| **Component library** | **Storybook** documents the shared components (form field, tag input, conflict banner, pagination, status badge, match card) with their states. Every story is also a test: Vitest renders it, runs its interaction (`play` function) and checks it with axe, so adding a story adds a test |
+| **Accessibility** | Labels tied to inputs, errors announced and linked with `aria-describedby`, live regions for progress, keyboard-only flows. Playwright runs axe (WCAG 2.1 AA) on every main page in a real browser; it caught a low-contrast label, which was fixed |
 | **Production images** | Multi-stage Docker builds; the API runs as a non-root user with production dependencies only, and the web app is served by unprivileged nginx, which also proxies `/api` |
 
 ## Tech stack
@@ -33,7 +35,7 @@ Built with **React 19 · TypeScript · NestJS · PostgreSQL · Drizzle ORM · Cl
 - **Backend:** NestJS 11, Drizzle ORM, PostgreSQL 17 (full-text search), Zod (`nestjs-zod`), OpenAPI/Swagger, JWT, Argon2, Helmet, rate limiting
 - **AI and jobs:** Anthropic Claude API (forced tool use), BullMQ, Redis (queue + pub/sub), Server-Sent Events
 - **Monorepo:** Nx 24 (project graph, affected commands, caching, module boundaries), npm workspaces
-- **Testing:** Jest + Supertest (API integration tests on a real PostgreSQL), Vitest + Testing Library + Mock Service Worker (React), Vitest (shared schemas)
+- **Testing:** Playwright + axe-core (end-to-end and accessibility, against the Docker stack), Jest + Supertest (API integration tests on a real PostgreSQL), Vitest + Testing Library + Mock Service Worker (React), Storybook stories as tests, Vitest (shared schemas)
 - **Ops:** Docker, Docker Compose, nginx, GitHub Actions
 
 ---
@@ -72,7 +74,13 @@ npm test               # all projects
 npx nx test api        # API tests (needs PostgreSQL: TEST_DATABASE_URL, default trialmatch_test on localhost)
 npx nx test web        # React component tests
 npm run lint           # ESLint (with module boundaries) + TypeScript
+npx nx storybook web   # component library on http://localhost:6006
 npx nx graph           # see the project graph
+
+# End-to-end (real browser against the running stack)
+docker compose up -d --build --wait
+npx playwright install chromium   # once
+npx nx e2e web-e2e                # E2E_BASE_URL=http://localhost:4200 to test the dev servers instead
 ```
 
 | Tests | What they prove |
@@ -80,9 +88,11 @@ npx nx graph           # see the project graph
 | **API integration** (`apps/api/src/**/*.spec.ts`) | The real Nest app (guards, validation, error filter, migrations) against PostgreSQL: sign-in, 401s, field errors, NCT uniqueness, search with a literal `%`, pagination, 409 conflicts, owner-only patients and match runs, no 500s for odd ids, candidate selection, the event stream, retries then a clear failure |
 | **Matching engines** (`apps/api/src/app/matching/engines.spec.ts`) | Claude engine with a mocked client: forced tool use, every criterion sent, skipped criteria filled in as unknown, malformed output and rate limits retryable, a bad key not, text escaped. Rule-based engine: "Type 1" vs "Type 2", negations |
 | **React** (`apps/web/src/**/*.spec.tsx`) | Whole pages rendered with a mocked API (Mock Service Worker): sign-in redirects back, validation from the shared schemas, criteria reordering, field-only PATCH with the version, the 409 banner, sign-out on an expired token, a match run followed over an authenticated event stream to its per-criterion results |
+| **End-to-end** (`apps/web-e2e`) | Chromium against the production images: sign-in and return, creating and editing a trial with reordered criteria, URL filters surviving a reload, two users and the conflict banner, adding a patient and matching it over the live event stream, privacy between users, keyboard-only sign-in, and axe scans of every main page |
+| **Stories** (`apps/web/src/**/*.stories.tsx`) | Each component state renders, its interaction plays out, and axe finds no accessibility problems |
 | **Shared** (`libs/shared`) | The Zod rules (email normalisation, defaults, the age-range rule, pseudonyms) and the eligibility decision rule |
 
-CI (`.github/workflows/ci.yml`): formatting, then lint + typecheck + tests + builds (only the affected projects on pull requests), a check that migrations match the schema, and a job that builds the production images, starts the stack (PostgreSQL, Redis, the API with its worker, nginx) and checks it from the outside, including a match run streamed through nginx.
+CI (`.github/workflows/ci.yml`): formatting, then lint + typecheck + tests + builds + the Storybook build (only the affected projects on pull requests), a check that migrations match the schema, and a job that builds the production images, starts the stack (PostgreSQL, Redis, the API with its worker, nginx), smoke-tests it, and runs the Playwright suite against it.
 
 ## How a match run works
 
@@ -116,12 +126,13 @@ trialmatch/
 │   │       ├── db/             Drizzle schema, migrations, seed data
 │   │       ├── common/         Error filter (ApiError shape), Zod DTO helpers
 │   │       └── setup.ts        Shared by main.ts and tests: Helmet, CORS, OpenAPI, migrations
-│   └── web/                    React app
-│       └── src/
-│           ├── features/       auth, trials, patients, matching (pages, forms, TanStack Query hooks)
-│           ├── components/     Layout, Field, TagInput, ConflictBanner, Pagination
-│           ├── lib/            API client (incl. SSE over fetch), auth context, form helpers
-│           └── testing/        Mock Service Worker setup and fixtures
+│   ├── web/                    React app (+ .storybook)
+│   │   └── src/
+│   │       ├── features/       auth, trials, patients, matching (pages, forms, TanStack Query hooks)
+│   │       ├── components/     Layout, Field, TagInput, ConflictBanner, Pagination
+│   │       ├── lib/            API client (incl. SSE over fetch), auth context, form helpers
+│   │       └── testing/        Mock Service Worker setup and fixtures
+│   └── web-e2e/                Playwright end-to-end and accessibility tests
 ├── libs/shared/                Zod schemas, types and the eligibility rule, used by both apps
 └── docker-compose.yml          db, redis, api, web
 ```
@@ -130,5 +141,5 @@ trialmatch/
 
 - [x] **Week 1:** Nx monorepo · NestJS API (auth, trials, patients) · React app · shared Zod schemas · tests · Docker · CI
 - [x] **Week 2:** AI eligibility matching with Claude (a verdict and reason per criterion) · BullMQ background jobs · live progress over Server-Sent Events · full-text candidate search
-- [ ] **Week 3:** Playwright end-to-end tests · Storybook component library · accessibility checks
+- [x] **Week 3:** Playwright end-to-end tests · Storybook component library (stories as tests) · accessibility checks (axe, WCAG 2.1 AA)
 - [ ] **Week 4:** Live deployment · monitoring
