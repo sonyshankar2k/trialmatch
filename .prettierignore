@@ -7,3 +7,4 @@
 **/test-output
 apps/api/src/app/db/migrations
 package-lock.json
+*.md

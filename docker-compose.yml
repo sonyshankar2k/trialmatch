@@ -1,6 +1,8 @@
 # One command starts everything:  docker compose up --build
 #   App:       http://localhost:8080   (demo: alice@trialmatch.dev / trialmatch-demo)
 #   API docs:  http://localhost:3000/api/docs
+# For AI matching with Claude, put ANTHROPIC_API_KEY=... in a .env file next to this
+# one (see .env.example). Without it, a free rule-based engine is used.
 services:
   db:
     image: postgres:17-alpine
@@ -18,6 +20,15 @@ services:
       timeout: 3s
       retries: 20
 
+  # BullMQ job queue for matching runs, and pub/sub for their live progress.
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   api:
     build:
       context: .
@@ -28,10 +39,16 @@ services:
       JWT_SECRET: local-docker-secret-change-me-0123456789abcdef
       CORS_ORIGINS: http://localhost:8080,http://localhost:4200
       SEED_DEMO_DATA: 'true'
+      REDIS_URL: redis://redis:6379
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # A short pause per trial so the live progress is visible in the demo.
+      MATCH_STEP_DELAY_MS: '500'
     ports:
       - '3000:3000'
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   web:

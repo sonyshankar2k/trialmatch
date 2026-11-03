@@ -7,3 +7,6 @@ process.env['DATABASE_URL'] =
   process.env['TEST_DATABASE_URL'] ??
   'postgres://trialmatch:trialmatch@localhost:5432/trialmatch_test';
 process.env['SEED_DEMO_DATA'] = 'false';
+// Matching runs in-process with the rule-based engine (no Redis, no API key needed).
+delete process.env['REDIS_URL'];
+process.env['MATCH_ENGINE'] = 'rules';
