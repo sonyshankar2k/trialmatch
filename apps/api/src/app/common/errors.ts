@@ -61,6 +61,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
       }
       return { statusCode: 400, message: 'Validation failed', fieldErrors };
     }
+    if (exception instanceof HttpException && exception.getStatus() === 429) {
+      return {
+        statusCode: 429,
+        message: 'Too many attempts. Wait a minute and try again.',
+      };
+    }
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const response = exception.getResponse();

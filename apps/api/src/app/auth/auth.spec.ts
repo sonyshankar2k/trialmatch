@@ -85,4 +85,28 @@ describe('auth', () => {
       .expect(401);
     await t.http().get('/api/health').expect(200); // public
   });
+
+  it('slows down repeated sign-in attempts with a clear 429', async () => {
+    process.env['AUTH_RATE_LIMIT_PER_MINUTE'] = '3';
+    try {
+      // Earlier tests in this file already used some of this minute's attempts.
+      const statuses: number[] = [];
+      let last: { body: unknown } = { body: null };
+      for (let i = 0; i < 5; i++) {
+        last = await t
+          .http()
+          .post('/api/auth/login')
+          .send({ email: 'x@example.com', password: 'nope-nope-nope' });
+        statuses.push((last as unknown as { status: number }).status);
+      }
+      expect(statuses.at(-1)).toBe(429);
+      expect(statuses.every((s) => s === 401 || s === 429)).toBe(true);
+      expect(last.body).toEqual({
+        statusCode: 429,
+        message: 'Too many attempts. Wait a minute and try again.',
+      });
+    } finally {
+      process.env['AUTH_RATE_LIMIT_PER_MINUTE'] = '1000';
+    }
+  });
 });

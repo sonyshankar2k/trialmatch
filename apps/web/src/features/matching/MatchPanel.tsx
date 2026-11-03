@@ -102,7 +102,7 @@ export function MatchPanel({ patientId }: { patientId: number }) {
         <div className="mt-4">
           <p className="text-sm text-slate-600" role="status">
             {latest.stage}
-            <span className="ml-2 text-xs text-slate-400">
+            <span className="ml-2 text-xs text-slate-500">
               {latest.engine === 'claude'
                 ? 'Assessed by Claude'
                 : 'Rule-based estimate (no AI key configured)'}{' '}
@@ -121,7 +121,8 @@ export function MatchPanel({ patientId }: { patientId: number }) {
   );
 }
 
-function MatchCard({ result }: { result: TrialMatch }) {
+/** One assessed trial: the decision, the summary, and a table of criterion verdicts. */
+export function MatchCard({ result }: { result: TrialMatch }) {
   const [open, setOpen] = useState(result.eligibility !== 'not_eligible');
   const detailsId = `match-${result.trialId}-criteria`;
   return (

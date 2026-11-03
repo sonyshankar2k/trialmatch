@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "out-tsc/playwright",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom"],
+    "types": ["node"],
+    "tsBuildInfoFile": "out-tsc/playwright/tsconfig.tsbuildinfo"
+  },
+  "include": ["playwright.config.ts", "src/**/*.ts"]
+}
