@@ -1,13 +1,14 @@
 /**
  * TrialMatch API.  Run: npx nx serve api   ·   Docs: http://localhost:3000/api/docs
  */
-import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app/app.module';
 import { configureApp } from './app/setup';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
   await configureApp(app);
   const port = process.env['PORT'] || 3000;
   await app.listen(port);
@@ -22,9 +23,9 @@ async function bootstrap() {
       // @nx/js isn't installed (production image)
     }
   }
-  Logger.log(
-    `TrialMatch API on http://localhost:${port}/api (docs: /api/docs)`,
-  );
+  app
+    .get(Logger)
+    .log(`TrialMatch API on http://localhost:${port}/api (docs: /api/docs)`);
 }
 
 bootstrap();

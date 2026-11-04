@@ -5,6 +5,7 @@ WORKDIR /repo
 COPY package.json package-lock.json nx.json tsconfig.base.json tsconfig.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+COPY apps/web-e2e/package.json apps/web-e2e/
 COPY libs/shared/package.json libs/shared/
 RUN npm ci --no-audit --no-fund
 COPY . .

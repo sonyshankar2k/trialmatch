@@ -39,6 +39,7 @@ services:
       JWT_SECRET: local-docker-secret-change-me-0123456789abcdef
       CORS_ORIGINS: http://localhost:8080,http://localhost:4200
       SEED_DEMO_DATA: 'true'
+      TRUST_PROXY: '1' # nginx (the web service) is in front of the API
       # Sign-in attempts per minute per client. CI raises it: the e2e suite signs in often.
       AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
       REDIS_URL: redis://redis:6379

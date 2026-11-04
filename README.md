@@ -2,6 +2,8 @@
 
 **Match patients to clinical trials.** Research coordinators keep a catalog of clinical trials with their eligibility criteria and a private list of de-identified patient profiles. One click finds the trials a patient could join: Claude checks the profile against every inclusion and exclusion criterion and explains each verdict, while a background worker streams progress live to the browser.
 
+**Live demo:** _coming soon_ (sign in as `alice@trialmatch.dev` / `trialmatch-demo`) · **Component library:** https://sonyshankar2k.github.io/trialmatch/
+
 Built with **React 19 · TypeScript · NestJS · PostgreSQL · Drizzle ORM · Claude API · BullMQ · Redis · Server-Sent Events · Zod · TanStack Query · React Hook Form · Tailwind CSS · Storybook · Playwright · Nx monorepo · Docker · GitHub Actions**.
 
 ---
@@ -27,6 +29,8 @@ Built with **React 19 · TypeScript · NestJS · PostgreSQL · Drizzle ORM · Cl
 | **Migrations** | Drizzle generates SQL migrations from the schema; the API applies them at startup under a PostgreSQL advisory lock, so two replicas never migrate at once. CI fails if the schema changes without a migration |
 | **Component library** | **Storybook** documents the shared components (form field, tag input, conflict banner, pagination, status badge, match card) with their states. Every story is also a test: Vitest renders it, runs its interaction (`play` function) and checks it with axe, so adding a story adds a test |
 | **Accessibility** | Labels tied to inputs, errors announced and linked with `aria-describedby`, live regions for progress, keyboard-only flows. Playwright runs axe (WCAG 2.1 AA) on every main page in a real browser; it caught a low-contrast label, which was fixed |
+| **One-container hosting** | For hosting, one image runs everything: the API also serves the built React app (hashed assets cached for a year, `index.html` never cached, deep links handled), so there is one URL, no CORS, and the live event stream stays same-origin. Deployed on **Render** with a **Neon** PostgreSQL database from `render.yaml` |
+| **Operations** | JSON request logs (pino) with a request id on every response (`X-Request-Id`, taken from the proxy when it sets one), no headers or tokens in logs; a health check that also checks the database (used by Docker, Render and uptime monitors); correct client addresses behind proxies for rate limits and logs (`TRUST_PROXY`) |
 | **Production images** | Multi-stage Docker builds; the API runs as a non-root user with production dependencies only, and the web app is served by unprivileged nginx, which also proxies `/api` |
 
 ## Tech stack
@@ -36,7 +40,7 @@ Built with **React 19 · TypeScript · NestJS · PostgreSQL · Drizzle ORM · Cl
 - **AI and jobs:** Anthropic Claude API (forced tool use), BullMQ, Redis (queue + pub/sub), Server-Sent Events
 - **Monorepo:** Nx 24 (project graph, affected commands, caching, module boundaries), npm workspaces
 - **Testing:** Playwright + axe-core (end-to-end and accessibility, against the Docker stack), Jest + Supertest (API integration tests on a real PostgreSQL), Vitest + Testing Library + Mock Service Worker (React), Storybook stories as tests, Vitest (shared schemas)
-- **Ops:** Docker, Docker Compose, nginx, GitHub Actions
+- **Ops:** Docker, Docker Compose, nginx, GitHub Actions, Render, Neon (serverless PostgreSQL), GitHub Pages, pino structured logging
 
 ---
 
@@ -92,7 +96,18 @@ npx nx e2e web-e2e                # E2E_BASE_URL=http://localhost:4200 to test t
 | **Stories** (`apps/web/src/**/*.stories.tsx`) | Each component state renders, its interaction plays out, and axe finds no accessibility problems |
 | **Shared** (`libs/shared`) | The Zod rules (email normalisation, defaults, the age-range rule, pseudonyms) and the eligibility decision rule |
 
-CI (`.github/workflows/ci.yml`): formatting, then lint + typecheck + tests + builds + the Storybook build (only the affected projects on pull requests), a check that migrations match the schema, and a job that builds the production images, starts the stack (PostgreSQL, Redis, the API with its worker, nginx), smoke-tests it, and runs the Playwright suite against it.
+CI (`.github/workflows/ci.yml`): formatting, then lint + typecheck + tests + builds + the Storybook build (only the affected projects on pull requests), a check that migrations match the schema, a job that builds the Compose images, starts the stack (PostgreSQL, Redis, the API with its worker, nginx), smoke-tests it and runs the Playwright suite against it, and a job that builds the single hosting image and smoke-tests it the way Render runs it.
+
+## Deploying (free)
+
+The hosted version uses the single-container `Dockerfile` (API + React app, matching in-process) on Render's free plan, with Neon's free PostgreSQL. Docker Compose keeps the full split setup (nginx, API, Redis worker).
+
+1. **Database:** create a project at https://neon.tech and copy its connection string (it ends with `?sslmode=require`).
+2. **App:** at https://render.com choose **New → Blueprint**, pick this repository, paste the connection string as `DATABASE_URL` (and optionally `ANTHROPIC_API_KEY`). `render.yaml` sets everything else; migrations and demo data run on first start.
+3. **Storybook:** in the GitHub repository, **Settings → Pages → Source: GitHub Actions**. The `Storybook` workflow publishes it on every push to `main`.
+4. **Uptime:** point a free monitor (e.g. UptimeRobot) at `https://<your-app>.onrender.com/api/health` every 5 minutes. It alerts you if the app or database is down, and keeps the free instance from sleeping.
+
+Render redeploys automatically on every push to `main`. CI builds and smoke-tests the same image first (`image` job).
 
 ## How a match run works
 
@@ -133,6 +148,8 @@ trialmatch/
 │   │       ├── lib/            API client (incl. SSE over fetch), auth context, form helpers
 │   │       └── testing/        Mock Service Worker setup and fixtures
 │   └── web-e2e/                Playwright end-to-end and accessibility tests
+├── Dockerfile                  Single-container image for hosting (API + React app)
+├── render.yaml                 Render Blueprint (free plan) for the live demo
 ├── libs/shared/                Zod schemas, types and the eligibility rule, used by both apps
 └── docker-compose.yml          db, redis, api, web
 ```
@@ -142,4 +159,4 @@ trialmatch/
 - [x] **Week 1:** Nx monorepo · NestJS API (auth, trials, patients) · React app · shared Zod schemas · tests · Docker · CI
 - [x] **Week 2:** AI eligibility matching with Claude (a verdict and reason per criterion) · BullMQ background jobs · live progress over Server-Sent Events · full-text candidate search
 - [x] **Week 3:** Playwright end-to-end tests · Storybook component library (stories as tests) · accessibility checks (axe, WCAG 2.1 AA)
-- [ ] **Week 4:** Live deployment · monitoring
+- [x] **Week 4:** Live demo on Render + Neon (single-container image) · Storybook on GitHub Pages · structured logging, request ids, health checks
