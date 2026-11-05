@@ -12,3 +12,4 @@ process.env['AUTH_RATE_LIMIT_PER_MINUTE'] = '1000';
 // Matching runs in-process with the rule-based engine (no Redis, no API key needed).
 delete process.env['REDIS_URL'];
 process.env['MATCH_ENGINE'] = 'rules';
+process.env['LOG_LEVEL'] = 'silent';

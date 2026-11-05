@@ -38,6 +38,18 @@ export const EnvSchema = z.object({
     .min(1)
     .max(10_000)
     .default(10),
+  // ---- Week 4: deployment ----
+  /** Log level for the JSON request logs (pino): fatal, error, warn, info, debug, trace, silent. */
+  LOG_LEVEL: z
+    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+    .default('info'),
+  /**
+   * How many proxies sit in front of the API (nginx, a cloud load balancer). Needed so
+   * rate limits and logs see the real client address instead of the proxy's.
+   */
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+  /** Serve the built React app from this folder (single-container deployment). */
+  WEB_DIST_DIR: z.string().optional(),
   // ---- Week 2: AI matching ----
   /** Redis for the BullMQ job queue and live events. Without it, matching runs in-process. */
   REDIS_URL: z.string().optional(),

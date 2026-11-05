@@ -1,0 +1,27 @@
+# Render Blueprint: one free web service running the single-container image.
+# Render → New → Blueprint → pick this repository. It asks for the values marked
+# `sync: false`; JWT_SECRET is generated for you. The database is Neon (free PostgreSQL).
+services:
+  - type: web
+    name: trialmatch
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: ohio
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL # Neon connection string, with ?sslmode=require
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ANTHROPIC_API_KEY # optional: without it the rule-based engine runs
+        sync: false
+      - key: SEED_DEMO_DATA
+        value: 'true'
+      - key: TRUST_PROXY # Render's load balancer sits in front of the app
+        value: '1'
+      - key: MATCH_STEP_DELAY_MS # so the live progress is visible in the demo
+        value: '300'
+      - key: LOG_LEVEL
+        value: info
