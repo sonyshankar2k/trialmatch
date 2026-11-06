@@ -11,6 +11,11 @@ export const EnvSchema = z.object({
   PORT: z.coerce.number().int().default(3000),
   DATABASE_URL: z
     .string()
+    .trim()
+    .regex(
+      /^postgres(ql)?:\/\/[^\s"']+$/,
+      'must be one line starting with postgres:// or postgresql://, with no quotes or spaces',
+    )
     .default('postgres://trialmatch:trialmatch@localhost:5432/trialmatch'),
   // Local development only. Set a long random value anywhere real (openssl rand -hex 32).
   JWT_SECRET: z

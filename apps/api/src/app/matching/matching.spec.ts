@@ -61,10 +61,11 @@ describe('matching', () => {
     expect(result.eligibility).toBe('possibly_eligible');
     expect(result.assessments.map((a) => `${a.code}:${a.verdict}`)).toEqual([
       'I1:met',
-      'I2:met', // the notes mention HbA1c (8.2%, in range); the reason asks a person to confirm
-      'I3:unknown',
+      'I2:met', // HbA1c 8.2% is between 7.0% and 10.5%
+      'I3:met', // BMI 33 is 30 or more
       'E1:unknown',
-      'E2:unknown',
+      'E2:not_met', // eGFR 78 is not below 30
+
       'E3:not_met',
     ]);
     expect(run.stage).toBe('1 trial checked: 0 likely eligible, 1 need review');

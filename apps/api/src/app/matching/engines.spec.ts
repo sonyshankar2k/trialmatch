@@ -5,6 +5,7 @@ import {
   buildPrompt,
   ClaudeEngine,
   keyTerms,
+  parseThreshold,
   PermanentMatchError,
   RulesEngine,
   TransientMatchError,
@@ -56,6 +57,68 @@ describe('RulesEngine', () => {
       'unknown', // nothing about eGFR
     ]);
     expect(result[2].evidence).toContain('no history of pancreatitis');
+  });
+
+  it('compares lab values and scores with the criterion threshold', async () => {
+    const labs: TrialForMatching = {
+      ...trial,
+      criteria: [
+        c(1, 'inclusion', 'HbA1c between 7.0% and 10.5%'),
+        c(2, 'inclusion', 'BMI of 30 kg/m² or higher'),
+        c(3, 'exclusion', 'eGFR below 30 mL/min/1.73m²'),
+        c(4, 'inclusion', 'Blood eosinophils of 300 cells/µL or more'),
+        c(5, 'inclusion', 'LVEF of 55% or more'),
+      ],
+    };
+    const result = await new RulesEngine().assess(
+      {
+        ...patient,
+        notes: 'HbA1c 11.2%. BMI 33. eGFR 78. Eosinophils 450 cells/µL.',
+      },
+      labs,
+    );
+    expect(result.map((a) => a.verdict)).toEqual([
+      'not_met', // 11.2 is above the range
+      'met', // 33 >= 30
+      'not_met', // 78 is not below 30, so the exclusion does not apply
+      'met', // 450 >= 300
+      'unknown', // no LVEF in the profile
+    ]);
+    expect(result[0].reason).toBe(
+      'HbA1c is 11.2, which is not between 7.0 and 10.5.',
+    );
+    expect(result[1].evidence).toBe('bmi 33');
+    expect(result[4].reason).toContain('no LVEF value');
+  });
+
+  it('reads the threshold wording', () => {
+    expect(parseThreshold('HbA1c between 7.0% and 10.5%')).toMatchObject({
+      min: 7,
+      max: 10.5,
+    });
+    expect(parseThreshold('eGFR below 30 mL/min/1.73m²')).toMatchObject({
+      max: 30,
+      maxInclusive: false,
+    });
+    expect(parseThreshold('BMI of 30 kg/m² or higher')).toMatchObject({
+      min: 30,
+      minInclusive: true,
+    });
+    expect(parseThreshold('Type 1 diabetes')).toBeNull();
+  });
+
+  it('treats a value on the boundary by the wording', async () => {
+    const result = await new RulesEngine().assess(
+      { ...patient, notes: 'eGFR 30. BMI 30.' },
+      {
+        ...trial,
+        criteria: [
+          c(1, 'exclusion', 'eGFR below 30 mL/min/1.73m²'),
+          c(2, 'inclusion', 'BMI of 30 kg/m² or higher'),
+        ],
+      },
+    );
+    expect(result.map((a) => a.verdict)).toEqual(['not_met', 'met']);
   });
 
   it('keeps the modifier in front of a word', () => {
