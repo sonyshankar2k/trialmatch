@@ -6,6 +6,7 @@ import {
   ClaudeEngine,
   keyTerms,
   parseThreshold,
+  sentenceAt,
   PermanentMatchError,
   RulesEngine,
   TransientMatchError,
@@ -56,7 +57,7 @@ describe('RulesEngine', () => {
       'not_met', // "No history of pancreatitis"
       'unknown', // nothing about eGFR
     ]);
-    expect(result[2].evidence).toContain('no history of pancreatitis');
+    expect(result[2].evidence).toBe('no history of pancreatitis');
   });
 
   it('compares lab values and scores with the criterion threshold', async () => {
@@ -89,6 +90,14 @@ describe('RulesEngine', () => {
     );
     expect(result[1].evidence).toBe('bmi 33');
     expect(result[4].reason).toContain('no LVEF value');
+  });
+
+  it('quotes the whole sentence as evidence', () => {
+    const notes = 'hba1c 8.2%. egfr 78. no history of pancreatitis.';
+    expect(sentenceAt(notes, notes.indexOf('pancreatitis'))).toBe(
+      'no history of pancreatitis',
+    );
+    expect(sentenceAt(notes, notes.indexOf('egfr'))).toBe('egfr 78');
   });
 
   it('reads the threshold wording', () => {
