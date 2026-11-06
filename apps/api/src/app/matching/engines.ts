@@ -281,16 +281,14 @@ function assessOne(
         criterionId: c.id,
         verdict: 'not_met',
         reason: `The profile says the patient does not have "${term}".`,
-        evidence: profile.slice(Math.max(0, at - 20), at + term.length).trim(),
+        evidence: sentenceAt(profile, at),
       };
     }
     return {
       criterionId: c.id,
       verdict: 'met',
       reason: `The profile mentions "${term}". Confirm the details match the criterion.`,
-      evidence: profile
-        .slice(Math.max(0, at - 20), at + term.length + 20)
-        .trim(),
+      evidence: sentenceAt(profile, at),
     };
   }
   return {
@@ -399,6 +397,21 @@ function assessMeasurement(
     reason: `${measure.label} is ${value}, which is ${ok ? '' : 'not '}${threshold.wording}.`,
     evidence: valueAt[0].trim(),
   };
+}
+
+/** The whole sentence around a position, so evidence never starts mid-word. */
+export function sentenceAt(text: string, at: number): string {
+  const start = Math.max(
+    text.lastIndexOf('. ', at) + 1,
+    text.lastIndexOf('; ', at) + 1,
+    0,
+  );
+  const ends = ['. ', '; ']
+    .map((sep) => text.indexOf(sep, at))
+    .filter((i) => i !== -1);
+  const end = ends.length ? Math.min(...ends) : text.length;
+  const sentence = text.slice(start, end).trim().replace(/\.$/, '');
+  return sentence.length > 160 ? `${sentence.slice(0, 157)}…` : sentence;
 }
 
 /**
