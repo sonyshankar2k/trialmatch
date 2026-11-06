@@ -252,6 +252,10 @@ function assessOne(
   patient: Patient,
   profile: string,
 ): CriterionAssessmentInput {
+  // A lab value or score with a threshold, e.g. "HbA1c between 7.0% and 10.5%".
+  const measured = assessMeasurement(c, profile);
+  if (measured) return measured;
+
   // Patient conditions named in the criterion, e.g. "Type 2 diabetes" in "Diagnosis of type 2 diabetes…"
   const text = c.text.toLowerCase();
   const named = patient.conditions.find((cond) =>
@@ -294,6 +298,106 @@ function assessOne(
     verdict: 'unknown',
     reason: 'The profile does not mention this. Check it by hand.',
     evidence: null,
+  };
+}
+
+interface Measure {
+  label: string;
+  /** Matches the measure's name in lower-case text. */
+  name: RegExp;
+}
+
+const MEASURES: Measure[] = [
+  { label: 'HbA1c', name: /\b(?:hba1c|a1c)\b/ },
+  { label: 'BMI', name: /\b(?:bmi|body mass index)\b/ },
+  { label: 'eGFR', name: /\begfr\b/ },
+  { label: 'Eosinophil count', name: /\beosinophils?\b/ },
+  { label: 'MoCA', name: /\bmoca\b/ },
+  { label: 'LVEF', name: /\b(?:lvef|ejection fraction)\b/ },
+];
+
+/** A numeric condition from a criterion: low/high bounds, each inclusive or not. */
+interface Threshold {
+  min?: number;
+  minInclusive?: boolean;
+  max?: number;
+  maxInclusive?: boolean;
+  wording: string;
+}
+
+const NUM = '(\\d+(?:\\.\\d+)?)';
+
+export function parseThreshold(text: string): Threshold | null {
+  const t = text.toLowerCase();
+  let m = new RegExp(`between\\s+${NUM}\\D*?\\s+and\\s+${NUM}`).exec(t);
+  if (m)
+    return {
+      min: +m[1],
+      minInclusive: true,
+      max: +m[2],
+      maxInclusive: true,
+      wording: `between ${m[1]} and ${m[2]}`,
+    };
+  m = new RegExp(`(?:below|less than|under|<)\\s*${NUM}`).exec(t);
+  if (m) return { max: +m[1], maxInclusive: false, wording: `below ${m[1]}` };
+  m = new RegExp(`(?:above|greater than|more than|over|>)\\s*${NUM}`).exec(t);
+  if (m) return { min: +m[1], minInclusive: false, wording: `above ${m[1]}` };
+  m = new RegExp(`(?:at least|≥|>=)\\s*${NUM}`).exec(t);
+  if (m) return { min: +m[1], minInclusive: true, wording: `at least ${m[1]}` };
+  m = new RegExp(`(?:at most|≤|<=)\\s*${NUM}`).exec(t);
+  if (m) return { max: +m[1], maxInclusive: true, wording: `at most ${m[1]}` };
+  m = new RegExp(
+    `${NUM}[^\\d]*?\\bor\\s+(?:more|higher|greater|above)\\b`,
+  ).exec(t);
+  if (m) return { min: +m[1], minInclusive: true, wording: `${m[1]} or more` };
+  m = new RegExp(`${NUM}[^\\d]*?\\bor\\s+(?:less|lower|below|fewer)\\b`).exec(
+    t,
+  );
+  if (m) return { max: +m[1], maxInclusive: true, wording: `${m[1]} or less` };
+  return null;
+}
+
+function satisfies(value: number, t: Threshold): boolean {
+  if (t.min != null && (t.minInclusive ? value < t.min : value <= t.min))
+    return false;
+  if (t.max != null && (t.maxInclusive ? value > t.max : value >= t.max))
+    return false;
+  return true;
+}
+
+/**
+ * Criteria about a lab value or score: reads the patient's number from the
+ * profile ("eGFR 78") and compares it with the criterion's threshold.
+ * Returns null when the criterion isn't one of these, so other checks run.
+ */
+function assessMeasurement(
+  c: Criterion,
+  profile: string,
+): CriterionAssessmentInput | null {
+  const text = c.text.toLowerCase();
+  const measure = MEASURES.find((m) => m.name.test(text));
+  if (!measure) return null;
+  const threshold = parseThreshold(text);
+  if (!threshold) return null;
+
+  const valueAt = new RegExp(
+    `${measure.name.source}[^\\d.;]{0,15}?${NUM}`,
+  ).exec(profile);
+  if (!valueAt) {
+    return {
+      criterionId: c.id,
+      verdict: 'unknown',
+      reason: `The profile has no ${measure.label} value. Check it by hand.`,
+      evidence: null,
+    };
+  }
+  const value = Number(valueAt[1]);
+  const ok = satisfies(value, threshold);
+  return {
+    criterionId: c.id,
+    verdict: ok ? 'met' : 'not_met',
+    reason: `${measure.label} is ${value}, which is ${ok ? '' : 'not '}${threshold.wording}.`,
+    evidence: valueAt[0].trim(),
   };
 }
 
