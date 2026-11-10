@@ -5,6 +5,7 @@ import { Layout } from '../components/Layout';
 import { LoginPage } from '../features/auth/LoginPage';
 import { PatientPage } from '../features/patients/PatientPage';
 import { PatientsPage } from '../features/patients/PatientsPage';
+import { ImportPage } from '../features/registry/ImportPage';
 import { TrialPage } from '../features/trials/TrialPage';
 import { TrialsPage } from '../features/trials/TrialsPage';
 import { ApiRequestError } from '../lib/api';
@@ -39,6 +40,7 @@ export function App({ queryClient }: { queryClient?: QueryClient }) {
           >
             <Route index element={<Navigate to="/trials" replace />} />
             <Route path="trials" element={<TrialsPage />} />
+            <Route path="trials/import" element={<ImportPage />} />
             <Route path="trials/:id" element={<TrialPage />} />
             <Route path="patients" element={<PatientsPage />} />
             <Route path="patients/:id" element={<PatientPage />} />

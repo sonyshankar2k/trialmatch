@@ -43,9 +43,14 @@ export function TrialsPage() {
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Clinical trials</h1>
-        <Link to="/trials/new" className="btn-primary">
-          New trial
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/trials/import" className="btn-secondary">
+            Import from ClinicalTrials.gov
+          </Link>
+          <Link to="/trials/new" className="btn-primary">
+            New trial
+          </Link>
+        </div>
       </div>
 
       <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto_auto]">

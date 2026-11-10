@@ -18,6 +18,19 @@ test.describe('accessibility (WCAG 2.1 AA, axe)', () => {
     await expectAccessible(page);
   });
 
+  test('ClinicalTrials.gov import page', async ({ page }) => {
+    await signIn(page);
+    await page
+      .getByRole('link', { name: 'Import from ClinicalTrials.gov' })
+      .click();
+    // Searching with nothing typed explains itself without calling the registry.
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page.getByRole('alert')).toHaveText(
+      'Enter a condition or other search words.',
+    );
+    await expectAccessible(page);
+  });
+
   test('patients and a patient with match results', async ({ page }) => {
     await signIn(page);
     await page.getByRole('link', { name: 'Patients', exact: true }).click();

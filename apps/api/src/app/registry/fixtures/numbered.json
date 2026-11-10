@@ -1,0 +1,43 @@
+{
+  "protocolSection": {
+    "identificationModule": {
+      "nctId": "NCT90000002",
+      "briefTitle": "Skin prick allergy testing of a collagen wound matrix"
+    },
+    "statusModule": {
+      "overallStatus": "COMPLETED",
+      "lastUpdatePostDateStruct": {
+        "date": "2025-03-02",
+        "type": "ACTUAL"
+      }
+    },
+    "sponsorCollaboratorsModule": {
+      "leadSponsor": {
+        "name": "Example Wound Care Inc.",
+        "class": "OTHER"
+      }
+    },
+    "descriptionModule": {
+      "briefSummary": "Healthy volunteers receive skin prick tests with matrix ingredients."
+    },
+    "conditionsModule": {
+      "conditions": ["Allergy", "Hypersensitivity"]
+    },
+    "designModule": {
+      "studyType": "INTERVENTIONAL",
+      "phases": ["PHASE1", "PHASE2"]
+    },
+    "eligibilityModule": {
+      "eligibilityCriteria": "Inclusion Criteria:\n\n1. Healthy volunteers aged 18 years of age and older as demonstrated by selfreported medical history, concurrent medication, and a brief dermal skin assessment of the test sites;\n2. Fully informed of the risks of entering the study and willing to provide written informed consent and HIPAA authorization to disclose protected health information;\n3. Subject has normal healthy skin on the either volar forearm.\n\nExclusion Criteria:\n\nSubjects must be excluded if any of the following conditions exist:\n\n1. Self-reported pregnant or nursing at the screening visit;\n2. Clinically significant skin disease which may contraindicate participation, including psoriasis, eczema, atopic dermatitis, and active cancer;\n3. History of drug abuse or current drug user;\n4. Treatment with antihistamine or steroid (any route) administered within the last 7 days;\n5. History of anaphylaxis to matrix ingredients (e.g. fish, palm oil, hemp oil, beeswax);\n6. Persistent severe/ unstable asthma;\n7. Subjects on beta blockers and/or ACE inhibitors;\n8. Medical condition which in the opinion of the Investigator would compromise the safety of the subject or confound study results (Subjects with the following conditions: chronic renal failure, CVA, cancer, spinal cord injury, diabetic neuropathy, recent anaphylaxis, limbs affected by lymphoedema, paralysis, or neurogenic abnormalities;\n9. Diabetic (type 1 or 2);\n10. Subjects taking the following: Antidepressants such as doxepin, other tricyclics, Phenothiazines, and tetracyclics within the last two weeks;\n11. Subjects taking OTC cold and flu remedies, \"sinus\" analgesics, antitussives, antiemetics, sedatives, relaxants, migraine prophylactics (cyproheptadine, pizotifen);\n12. Prolonged use of topical corticosteroids;\n13. Use of topical moisturizers on the volar forearms;\n14. Dermographism \"writing on the skin\" - common localized hive reaction, characterized by the abrupt onset of welts and hives where the skin is exposed to pressure, scratching, itching, or stroking;\n15. Investigator deems the subject an unsuitable candidate for this study.",
+      "healthyVolunteers": true,
+      "sex": "ALL",
+      "minimumAge": "18 Years"
+    }
+  },
+  "derivedSection": {
+    "miscInfoModule": {
+      "versionHolder": "2026-11-06"
+    }
+  },
+  "hasResults": false
+}

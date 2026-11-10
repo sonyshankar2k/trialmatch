@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  date,
   customType,
   jsonb,
   index,
@@ -24,6 +25,7 @@ import {
   MATCH_RUN_STATUSES,
   SEXES,
   TRIAL_PHASES,
+  TRIAL_SOURCES,
   TRIAL_STATUSES,
   type CriterionAssessment,
 } from '@trialmatch/shared';
@@ -33,6 +35,7 @@ const tsvector = customType<{ data: string }>({ dataType: () => 'tsvector' });
 export const trialPhase = pgEnum('trial_phase', TRIAL_PHASES);
 export const trialStatus = pgEnum('trial_status', TRIAL_STATUSES);
 export const trialSex = pgEnum('trial_sex', SEXES);
+export const trialSource = pgEnum('trial_source', TRIAL_SOURCES);
 export const criterionType = pgEnum('criterion_type', CRITERION_TYPES);
 export const patientSex = pgEnum('patient_sex', ['female', 'male']);
 
@@ -71,6 +74,10 @@ export const trials = pgTable(
     minAge: integer('min_age'),
     maxAge: integer('max_age'),
     sex: trialSex('sex').notNull().default('all'),
+    /** Week 5: typed in by hand, or imported from ClinicalTrials.gov. */
+    source: trialSource('source').notNull().default('manual'),
+    /** For imported trials: the registry record's last update date. */
+    sourceLastUpdated: date('source_last_updated', { mode: 'string' }),
     version: integer('version').notNull().default(1),
     createdById: integer('created_by_id')
       .notNull()

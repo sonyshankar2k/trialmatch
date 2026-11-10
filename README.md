@@ -12,6 +12,9 @@ Built with **React 19 · TypeScript · NestJS · PostgreSQL · Drizzle ORM · Cl
 
 | Feature | How it works |
 |---|---|
+| **Import real trials** | **Import from ClinicalTrials.gov** searches the public US registry (API v2: condition, keywords or an NCT ID, recruiting status, 10 per page with "load more"). Picking a study shows how it will look in TrialMatch before anything is saved, then one click imports it, and patients can be matched against it right away. Imported trials link back to the registry and record when the registry last updated them |
+| **Eligibility text → criteria** | The registry stores eligibility as free text. A parser turns it into numbered I1 / E1 criteria: headings, bullets and numbered lists, sub-bullets and wrapped lines, intro lines, escaped markdown, and multi-cohort studies (each criterion is prefixed with its cohort, e.g. "For healthy controls: …"). Ages in months become whole years, rounded so no eligible patient is filtered out; combined phases (Phase 1/2) and every registry status are kept. Anything the import had to interpret or shorten is listed as a warning in the preview. Tested against real registry text |
+| **Resilient registry calls** | Every call has a timeout; a slow or failing registry returns **502** with a message a person can act on, and nothing is saved. Records are cached for 5 minutes (preview then import is one registry call), registry routes have their own rate limit, and a study can only be imported once (**409** with the existing trial's id, also when two people import it at the same moment) |
 | **AI eligibility matching** | **Find matching trials** on a patient: candidate trials are found in SQL (recruiting, the patient's age and sex, then PostgreSQL full-text search over the patient's conditions, GIN-indexed). For each, **Claude** assesses every criterion as met / not met / unknown, with a reason and the words from the profile it relied on. Output is forced through a tool whose schema is generated from Zod, and validated again before it is stored |
 | **Auditable decisions** | The overall result (likely eligible / needs review / not eligible) is computed by code from the per-criterion verdicts, never taken from the model: an exclusion that applies or an unmet inclusion rules the patient out; anything unknown needs a person. Results are labelled decision support |
 | **Background jobs** | Matching runs on a **BullMQ** queue in Redis, with retries and exponential backoff for transient failures (rate limits, timeouts, malformed AI output). A bad API key fails at once with a clear message. Retries are idempotent. Without Redis (local development, tests) the same runner works in-process |
@@ -138,12 +141,13 @@ trialmatch/
 │   │       ├── trials/         Trials + criteria (search, filters, 409s)
 │   │       ├── patients/       Owner-scoped patient profiles
 │   │       ├── matching/       Engines (Claude, rules), runner, BullMQ queue, Redis events, SSE
+│   │       ├── registry/       ClinicalTrials.gov client, study → trial mapper, search / preview / import
 │   │       ├── db/             Drizzle schema, migrations, seed data
 │   │       ├── common/         Error filter (ApiError shape), Zod DTO helpers
 │   │       └── setup.ts        Shared by main.ts and tests: Helmet, CORS, OpenAPI, migrations
 │   ├── web/                    React app (+ .storybook)
 │   │   └── src/
-│   │       ├── features/       auth, trials, patients, matching (pages, forms, TanStack Query hooks)
+│   │       ├── features/       auth, trials, patients, matching, registry (pages, forms, TanStack Query hooks)
 │   │       ├── components/     Layout, Field, TagInput, ConflictBanner, Pagination
 │   │       ├── lib/            API client (incl. SSE over fetch), auth context, form helpers
 │   │       └── testing/        Mock Service Worker setup and fixtures
@@ -160,3 +164,4 @@ trialmatch/
 - [x] **Week 2:** AI eligibility matching with Claude (a verdict and reason per criterion) · BullMQ background jobs · live progress over Server-Sent Events · full-text candidate search
 - [x] **Week 3:** Playwright end-to-end tests · Storybook component library (stories as tests) · accessibility checks (axe, WCAG 2.1 AA)
 - [x] **Week 4:** Live demo on Render + Neon (single-container image) · Storybook on GitHub Pages · structured logging, request ids, health checks
+- [x] **Week 5:** Import real trials from ClinicalTrials.gov (search, preview with warnings, one-click import) · eligibility-text parser · all registry phases and statuses

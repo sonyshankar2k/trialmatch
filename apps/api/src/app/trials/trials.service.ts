@@ -11,7 +11,18 @@ import {
   TrialListQuerySchema,
   TrialUpdateSchema,
 } from '@trialmatch/shared';
-import { and, asc, count, desc, eq, ilike, or, sql, SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  or,
+  sql,
+  SQL,
+} from 'drizzle-orm';
 import type { z } from 'zod';
 import { FieldError, VersionConflict } from '../common/errors';
 import {
@@ -75,6 +86,16 @@ export class TrialsService {
     };
   }
 
+  /** Which of these NCT IDs are already trials here: NCT ID → trial id. */
+  async idsByNct(nctIds: string[]): Promise<Map<string, number>> {
+    if (!nctIds.length) return new Map();
+    const rows = await this.db
+      .select({ id: trials.id, nctId: trials.nctId })
+      .from(trials)
+      .where(inArray(trials.nctId, nctIds));
+    return new Map(rows.map((r) => [r.nctId as string, r.id]));
+  }
+
   async get(id: number, db: Db | Tx = this.db): Promise<Trial> {
     const [row] = await db
       .select({ trial: trials, createdBy: users.displayName })
@@ -93,6 +114,10 @@ export class TrialsService {
   async create(
     input: z.output<typeof TrialCreateSchema>,
     userId: number,
+    provenance: Pick<Trial, 'source' | 'sourceLastUpdated'> = {
+      source: 'manual',
+      sourceLastUpdated: null,
+    },
   ): Promise<Trial> {
     const { criteria, ...fields } = input;
     return this.uniqueNct(() =>
@@ -101,6 +126,7 @@ export class TrialsService {
           .insert(trials)
           .values({
             ...fields,
+            ...provenance,
             nctId: fields.nctId ?? null,
             createdById: userId,
           })
@@ -202,6 +228,8 @@ function toTrial(
     minAge: t.minAge,
     maxAge: t.maxAge,
     sex: t.sex,
+    source: t.source,
+    sourceLastUpdated: t.sourceLastUpdated,
     criteria: criteria.map((c): Criterion => ({
       id: c.id,
       type: c.type,
@@ -227,6 +255,8 @@ function toSummary(t: Trial, criteriaCount: number): TrialSummary {
     minAge: t.minAge,
     maxAge: t.maxAge,
     sex: t.sex,
+    source: t.source,
+    sourceLastUpdated: t.sourceLastUpdated,
     version: t.version,
     createdBy: t.createdBy,
     createdAt: t.createdAt,

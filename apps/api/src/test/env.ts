@@ -13,3 +13,6 @@ process.env['AUTH_RATE_LIMIT_PER_MINUTE'] = '1000';
 delete process.env['REDIS_URL'];
 process.env['MATCH_ENGINE'] = 'rules';
 process.env['LOG_LEVEL'] = 'silent';
+// ClinicalTrials.gov calls go to a stub server started by the registry tests.
+process.env['CTGOV_BASE_URL'] = 'http://127.0.0.1:4599/api/v2';
+process.env['CTGOV_TIMEOUT_MS'] = '1000';
