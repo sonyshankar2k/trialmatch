@@ -66,6 +66,19 @@ export const EnvSchema = z.object({
   MATCH_MAX_TRIALS: z.coerce.number().int().min(1).max(20).default(5),
   /** Pause between trials so progress is visible in a demo. 0 in tests. */
   MATCH_STEP_DELAY_MS: z.coerce.number().int().min(0).max(5000).default(0),
+  // ---- Week 5: importing from ClinicalTrials.gov ----
+  /** ClinicalTrials.gov API v2. Tests point this at a local stub server. */
+  CTGOV_BASE_URL: z
+    .string()
+    .url()
+    .default('https://clinicaltrials.gov/api/v2')
+    .transform((v) => v.replace(/\/+$/, '')),
+  CTGOV_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(500)
+    .max(60_000)
+    .default(10_000),
   SEED_DEMO_DATA: z
     .enum(['true', 'false'])
     .default('true')

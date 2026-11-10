@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Trial } from '@trialmatch/shared';
+import { registryUrl, type Trial } from '@trialmatch/shared';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ConflictBanner } from '../../components/ConflictBanner';
 import { ApiRequestError, errorMessage } from '../../lib/api';
+import { formatDate } from '../../lib/dates';
 import { changedFields } from '../../lib/diff';
 import { applyServerErrors } from '../../lib/forms';
 import { trialKeys, trialQuery, useDeleteTrial, useSaveTrial } from './api';
@@ -193,8 +194,26 @@ function TrialEditor({ trial }: { trial?: Trial }) {
       )}
       {base && (
         <p className="mb-4 text-xs text-slate-500">
-          Created by {base.createdBy} · Last saved{' '}
+          {base.source === 'clinicaltrials_gov' ? 'Imported' : 'Created'} by{' '}
+          {base.createdBy} · Last saved{' '}
           {new Date(base.updatedAt).toLocaleString()} · Version {base.version}
+        </p>
+      )}
+      {base?.source === 'clinicaltrials_gov' && base.nctId && (
+        <p className="mb-4 rounded-md border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-slate-700">
+          Imported from ClinicalTrials.gov
+          {base.sourceLastUpdated &&
+            ` (record last updated ${formatDate(base.sourceLastUpdated)})`}
+          .{' '}
+          <a
+            href={registryUrl(base.nctId)}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-brand-700 underline"
+          >
+            View {base.nctId} on ClinicalTrials.gov
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
         </p>
       )}
       <TrialFormFields form={form} />

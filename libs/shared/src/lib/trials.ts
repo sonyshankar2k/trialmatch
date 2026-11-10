@@ -1,18 +1,32 @@
 import { z } from 'zod';
 import { PageQuerySchema, VersionSchema, text } from './common.js';
 
+/** The phases ClinicalTrials.gov uses, including combined phases and "not applicable" (device and behavioral studies). */
 export const TRIAL_PHASES = [
+  'Early Phase 1',
   'Phase 1',
+  'Phase 1/2',
   'Phase 2',
+  'Phase 2/3',
   'Phase 3',
   'Phase 4',
+  'Not applicable',
 ] as const;
+/** The recruitment statuses ClinicalTrials.gov uses for clinical trials. */
 export const TRIAL_STATUSES = [
   'not_yet_recruiting',
   'recruiting',
+  'enrolling_by_invitation',
   'active_not_recruiting',
+  'suspended',
+  'terminated',
   'completed',
+  'withdrawn',
+  'unknown',
 ] as const;
+/** Where a trial came from: typed in by hand, or imported from the public registry. */
+export const TRIAL_SOURCES = ['manual', 'clinicaltrials_gov'] as const;
+export type TrialSource = (typeof TRIAL_SOURCES)[number];
 export const SEXES = ['all', 'female', 'male'] as const;
 export const CRITERION_TYPES = ['inclusion', 'exclusion'] as const;
 
@@ -113,6 +127,9 @@ export interface Trial {
   maxAge: number | null;
   sex: (typeof SEXES)[number];
   criteria: Criterion[];
+  source: TrialSource;
+  /** For imported trials: when the record was last updated on ClinicalTrials.gov (YYYY-MM-DD). */
+  sourceLastUpdated: string | null;
   version: number;
   createdBy: string;
   createdAt: string;
@@ -127,6 +144,15 @@ export type TrialSummary = Omit<Trial, 'criteria' | 'summary'> & {
 export const STATUS_LABELS: Record<TrialStatus, string> = {
   not_yet_recruiting: 'Not yet recruiting',
   recruiting: 'Recruiting',
+  enrolling_by_invitation: 'Enrolling by invitation',
   active_not_recruiting: 'Active, not recruiting',
+  suspended: 'Suspended',
+  terminated: 'Terminated',
   completed: 'Completed',
+  withdrawn: 'Withdrawn',
+  unknown: 'Unknown status',
 };
+
+/** Public page of a study on ClinicalTrials.gov. */
+export const registryUrl = (nctId: string) =>
+  `https://clinicaltrials.gov/study/${nctId}`;

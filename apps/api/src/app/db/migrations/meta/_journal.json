@@ -15,6 +15,13 @@
       "when": 1793571140971,
       "tag": "0001_matching",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794274948391,
+      "tag": "0002_registry_import",
+      "breakpoints": true
     }
   ]
 }

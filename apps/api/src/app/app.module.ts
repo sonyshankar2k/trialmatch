@@ -12,6 +12,7 @@ import { DatabaseModule } from './db/database';
 import { HealthController } from './health.controller';
 import { MatchingModule } from './matching/matching.module';
 import { PatientsModule } from './patients/patients.module';
+import { RegistryModule } from './registry/registry.module';
 import { TrialsModule } from './trials/trials.module';
 
 @Module({
@@ -54,6 +55,7 @@ import { TrialsModule } from './trials/trials.module';
     TrialsModule,
     PatientsModule,
     MatchingModule,
+    RegistryModule,
   ],
   controllers: [HealthController],
   providers: [
