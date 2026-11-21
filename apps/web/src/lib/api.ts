@@ -59,6 +59,39 @@ export async function api<T>(
   return body as T;
 }
 
+/**
+ * Downloads a file from the API (with the sign-in header, which a plain link
+ * can't send) and hands it to the browser to save, named as the server says.
+ */
+export async function download(path: string): Promise<void> {
+  const token = tokenStore.get();
+  const res = await fetch(new URL(`/api${path}`, window.location.origin), {
+    headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+  });
+  if (!res.ok) {
+    const body = await res
+      .json()
+      .catch(() => ({ statusCode: res.status, message: res.statusText }));
+    if (res.status === 401 && token) onUnauthorized();
+    throw new ApiRequestError(res.status, body as ApiError);
+  }
+  const name =
+    /filename="([^"]+)"/.exec(
+      res.headers.get('Content-Disposition') ?? '',
+    )?.[1] ??
+    path.split('/').pop() ??
+    'download';
+  const url = URL.createObjectURL(await res.blob());
+  const link = Object.assign(document.createElement('a'), {
+    href: url,
+    download: name,
+  });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 /** A message a person can act on, for toasts and banners. */
 export function errorMessage(
   err: unknown,

@@ -58,6 +58,50 @@ export interface TrialMatch {
   assessments: CriterionAssessment[];
 }
 
+/** How a verdict reads to a person: an exclusion that is "met" applies to the patient. */
+export function verdictLabel(
+  a: Pick<CriterionAssessment, 'type' | 'verdict'>,
+): string {
+  if (a.verdict === 'unknown') return 'Unknown';
+  if (a.type === 'exclusion')
+    return a.verdict === 'met' ? 'Applies' : 'Does not apply';
+  return a.verdict === 'met' ? 'Met' : 'Not met';
+}
+
+/**
+ * Week 6: a coordinator's review of one match. Shortlisted trials go into the
+ * referral summary; dismissed ones are kept (with the reason in the note) but
+ * collapsed. A new run for the same patient carries decisions and notes forward.
+ */
+export const MATCH_DECISIONS = ['pending', 'shortlisted', 'dismissed'] as const;
+export type MatchDecision = (typeof MATCH_DECISIONS)[number];
+
+export const MatchReviewSchema = z.object({
+  decision: z.enum(MATCH_DECISIONS),
+  /** Free text for the study team; an empty note is stored as none. */
+  note: z
+    .string()
+    .trim()
+    .max(1000)
+    .nullish()
+    .transform((v) => v || null),
+});
+export type MatchReviewInput = z.input<typeof MatchReviewSchema>;
+
+/** A stored match: the assessment plus the coordinator's review. */
+export interface MatchResult extends TrialMatch {
+  id: number;
+  decision: MatchDecision;
+  note: string | null;
+  decidedAt: string | null;
+}
+
+export const DECISION_LABELS: Record<MatchDecision, string> = {
+  pending: 'Not reviewed',
+  shortlisted: 'Shortlisted',
+  dismissed: 'Dismissed',
+};
+
 export interface MatchRun {
   id: number;
   patientId: number;
@@ -66,7 +110,7 @@ export interface MatchRun {
   stage: string;
   engine: MatchEngine | null;
   error: string | null;
-  results: TrialMatch[];
+  results: MatchResult[];
   createdAt: string;
   finishedAt: string | null;
 }

@@ -1,19 +1,31 @@
 import {
+  Body,
   Controller,
   Get,
   Header,
   HttpCode,
   Param,
+  Patch,
   Post,
   Sse,
+  StreamableFile,
   type MessageEvent,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import type { MatchRun, MatchRunEvent } from '@trialmatch/shared';
+import { ApiBearerAuth, ApiProduces, ApiTags } from '@nestjs/swagger';
+import {
+  MatchReviewSchema,
+  type MatchResult,
+  type MatchRun,
+  type MatchRunEvent,
+} from '@trialmatch/shared';
 import { Observable } from 'rxjs';
+import type { z } from 'zod';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
-import { IdParam } from '../common/zod';
+import { createZodDto, IdParam } from '../common/zod';
 import { MatchingService } from './matching.service';
+import { renderReferralPdf } from './referral-pdf';
+
+class MatchReviewDto extends createZodDto(MatchReviewSchema) {}
 
 const isFinished = (run: MatchRun) =>
   run.status === 'succeeded' || run.status === 'failed';
@@ -48,6 +60,35 @@ export class MatchingController {
     @Param() { id }: IdParam,
   ): Promise<MatchRun> {
     return this.matching.get(user.id, id);
+  }
+
+  /** Week 6: shortlist, dismiss or annotate one match (it is carried into later runs). */
+  @Patch('match-results/:id')
+  review(
+    @CurrentUser() user: AuthUser,
+    @Param() { id }: IdParam,
+    @Body() body: MatchReviewDto,
+  ): Promise<MatchResult> {
+    return this.matching.review(
+      user.id,
+      id,
+      body as z.output<typeof MatchReviewSchema>,
+    );
+  }
+
+  /** The shortlisted trials of the latest run as a PDF to send to the study teams. */
+  @Get('patients/:id/referral.pdf')
+  @ApiProduces('application/pdf')
+  async referral(
+    @CurrentUser() user: AuthUser,
+    @Param() { id }: IdParam,
+  ): Promise<StreamableFile> {
+    const referral = await this.matching.referral(user.id, id);
+    const pdf = await renderReferralPdf(referral);
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="referral-${referral.patient.pseudonym.replace(/[^A-Za-z0-9-]/g, '_')}.pdf"`,
+    });
   }
 
   /**

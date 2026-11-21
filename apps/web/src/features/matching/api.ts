@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MatchRun, MatchRunEvent } from '@trialmatch/shared';
+import type {
+  MatchResult,
+  MatchReviewInput,
+  MatchRun,
+  MatchRunEvent,
+} from '@trialmatch/shared';
 import { useEffect } from 'react';
-import { api, streamEvents } from '../../lib/api';
+import { api, download, streamEvents } from '../../lib/api';
 
 export const matchKeys = {
   runs: (patientId: number) => ['patients', patientId, 'match-runs'] as const,
@@ -27,6 +32,32 @@ export function useStartMatch(patientId: number) {
         run,
         ...runs,
       ]),
+  });
+}
+
+/** Week 6: shortlist, dismiss or annotate a match; the cached runs update in place. */
+export function useReviewMatch(patientId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...review }: MatchReviewInput & { id: number }) =>
+      api<MatchResult>(`/match-results/${id}`, {
+        method: 'PATCH',
+        body: review,
+      }),
+    onSuccess: (saved) =>
+      qc.setQueryData<MatchRun[]>(matchKeys.runs(patientId), (runs = []) =>
+        runs.map((run) => ({
+          ...run,
+          results: run.results.map((r) => (r.id === saved.id ? saved : r)),
+        })),
+      ),
+  });
+}
+
+/** The referral summary PDF of the shortlisted trials, saved through the browser. */
+export function useDownloadReferral(patientId: number) {
+  return useMutation({
+    mutationFn: () => download(`/patients/${patientId}/referral.pdf`),
   });
 }
 

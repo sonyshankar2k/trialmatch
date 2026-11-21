@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import type { MatchRun, Patient } from '@trialmatch/shared';
 import { http, HttpResponse } from 'msw';
+import { vi } from 'vitest';
 import { renderApp } from '../../testing/render';
 import { server } from '../../testing/server';
 
@@ -39,6 +40,7 @@ const finished = run({
   finishedAt: '2026-11-01T10:00:05.000Z',
   results: [
     {
+      id: 1,
       trialId: 7,
       nctId: 'NCT99000001',
       title: 'GLP-1 agonist in type 2 diabetes',
@@ -46,6 +48,9 @@ const finished = run({
       eligibility: 'possibly_eligible',
       score: 50,
       summary: 'No criterion rules the patient out. Check E1 by hand.',
+      decision: 'pending',
+      note: null,
+      decidedAt: null,
       assessments: [
         {
           criterionId: 1,
@@ -156,5 +161,76 @@ describe('MatchPanel', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Match again' })).toBeEnabled();
+  });
+});
+
+describe('MatchPanel review (Week 6)', () => {
+  it('shortlists a match, adds a note, and downloads the referral summary', async () => {
+    const reviews: unknown[] = [];
+    server.use(
+      http.get('*/api/patients/1', () => HttpResponse.json(patient)),
+      http.get('*/api/patients/1/match-runs', () =>
+        HttpResponse.json([finished]),
+      ),
+      http.patch('*/api/match-results/1', async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        reviews.push(body);
+        return HttpResponse.json({
+          ...finished.results[0],
+          ...body,
+          note: body['note'] || null,
+          decidedAt: '2026-11-21T09:00:00.000Z',
+        });
+      }),
+      http.get(
+        '*/api/patients/1/referral.pdf',
+        () =>
+          new HttpResponse('%PDF-1.3', {
+            headers: {
+              'Content-Type': 'application/pdf',
+              'Content-Disposition':
+                'attachment; filename="referral-P-0001.pdf"',
+            },
+          }),
+      ),
+    );
+    const createObjectURL = vi.fn(() => 'blob:referral');
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+    const saved: string[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        saved.push(this.download);
+      });
+    const { user } = renderApp('/patients/1');
+
+    const download = await screen.findByRole('button', {
+      name: 'Download referral summary (PDF)',
+    });
+    expect(download).toBeDisabled(); // nothing shortlisted yet
+
+    const shortlist = screen.getByRole('button', { name: 'Shortlist' });
+    await user.click(shortlist);
+    expect(
+      await screen.findByText('1 trial shortlisted for referral.'),
+    ).toBeInTheDocument();
+    expect(shortlist).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByRole('button', { name: 'Add note' }));
+    await user.type(
+      screen.getByLabelText('Note for the study team'),
+      'Check eGFR first.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Save note' }));
+    expect(await screen.findByText('Check eGFR first.')).toBeInTheDocument();
+    expect(reviews).toEqual([
+      { decision: 'shortlisted', note: null },
+      { decision: 'shortlisted', note: 'Check eGFR first.' },
+    ]);
+
+    await user.click(download);
+    await vi.waitFor(() => expect(saved).toEqual(['referral-P-0001.pdf']));
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    click.mockRestore();
   });
 });

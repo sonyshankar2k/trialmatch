@@ -3,11 +3,22 @@ import {
   decideEligibility,
   type CriterionAssessment,
   type Criterion,
+  type MatchResult,
   type MatchRun,
   type Patient,
   type TrialMatch,
 } from '@trialmatch/shared';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 import type { Db } from '../db/database';
 import {
   matchResults,
@@ -241,6 +252,7 @@ export class MatchRunner {
     await this.db.transaction(async (tx) => {
       await tx.delete(matchResults).where(eq(matchResults.runId, runId)); // idempotent on retry
       if (results.length) {
+        const previous = await this.previousReviews(tx, runId);
         await tx.insert(matchResults).values(
           results.map((r, i) => ({
             runId,
@@ -253,6 +265,7 @@ export class MatchRunner {
             summary: r.summary,
             assessments: r.assessments,
             rank: i + 1,
+            ...previous.get(r.trialId),
           })),
         );
       }
@@ -263,6 +276,47 @@ export class MatchRunner {
       stage,
       finishedAt: new Date(),
     });
+  }
+
+  /**
+   * The latest review of each trial in this patient's earlier runs, so "Match again"
+   * keeps the coordinator's shortlist, dismissals and notes.
+   */
+  private async previousReviews(
+    tx: Pick<Db, 'select'>,
+    runId: number,
+  ): Promise<Map<number, Pick<ResultRow, 'decision' | 'note' | 'decidedAt'>>> {
+    const rows = await tx
+      .select({
+        trialId: matchResults.trialId,
+        decision: matchResults.decision,
+        note: matchResults.note,
+        decidedAt: matchResults.decidedAt,
+      })
+      .from(matchResults)
+      .innerJoin(matchRuns, eq(matchRuns.id, matchResults.runId))
+      .where(
+        and(
+          eq(
+            matchRuns.patientId,
+            sql`(select patient_id from match_runs where id = ${runId})`,
+          ),
+          ne(matchResults.runId, runId),
+          or(
+            ne(matchResults.decision, 'pending'),
+            isNotNull(matchResults.note),
+          ),
+        ),
+      )
+      .orderBy(desc(matchRuns.createdAt), desc(matchRuns.id));
+    const latest = new Map<
+      number,
+      Pick<ResultRow, 'decision' | 'note' | 'decidedAt'>
+    >();
+    for (const { trialId, ...review } of rows) {
+      if (trialId !== null && !latest.has(trialId)) latest.set(trialId, review);
+    }
+    return latest;
   }
 
   private async update(runId: number, fields: Partial<RunRow>) {
@@ -295,18 +349,26 @@ export function toMatchRun(row: RunRow, results: ResultRow[]): MatchRun {
     stage: row.stage,
     engine: (row.engine as MatchRun['engine']) ?? null,
     error: row.error,
-    results: results.map((r) => ({
-      trialId: r.trialId ?? 0,
-      nctId: r.nctId,
-      title: r.title,
-      condition: r.condition,
-      eligibility: r.eligibility,
-      score: r.score,
-      summary: r.summary,
-      assessments: r.assessments,
-    })),
+    results: results.map((r) => toMatchResult(r)),
     createdAt: row.createdAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
+  };
+}
+
+export function toMatchResult(r: ResultRow): MatchResult {
+  return {
+    id: r.id,
+    trialId: r.trialId ?? 0,
+    nctId: r.nctId,
+    title: r.title,
+    condition: r.condition,
+    eligibility: r.eligibility,
+    score: r.score,
+    summary: r.summary,
+    assessments: r.assessments,
+    decision: r.decision,
+    note: r.note,
+    decidedAt: r.decidedAt?.toISOString() ?? null,
   };
 }
 

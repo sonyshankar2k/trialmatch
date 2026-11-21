@@ -165,3 +165,4 @@ trialmatch/
 - [x] **Week 3:** Playwright end-to-end tests · Storybook component library (stories as tests) · accessibility checks (axe, WCAG 2.1 AA)
 - [x] **Week 4:** Live demo on Render + Neon (single-container image) · Storybook on GitHub Pages · structured logging, request ids, health checks
 - [x] **Week 5:** Import real trials from ClinicalTrials.gov (search, preview with warnings, one-click import) · eligibility-text parser · all registry phases and statuses
+- [x] **Week 6:** Coordinator review (shortlist, dismiss, notes, carried into later runs) · referral summary PDF of the shortlisted trials
