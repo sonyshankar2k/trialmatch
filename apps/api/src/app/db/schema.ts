@@ -22,6 +22,7 @@ import {
 import {
   CRITERION_TYPES,
   ELIGIBILITY,
+  MATCH_DECISIONS,
   MATCH_RUN_STATUSES,
   SEXES,
   TRIAL_PHASES,
@@ -146,6 +147,7 @@ export const patients = pgTable(
 
 export const matchRunStatus = pgEnum('match_run_status', MATCH_RUN_STATUSES);
 export const eligibility = pgEnum('eligibility', ELIGIBILITY);
+export const matchDecision = pgEnum('match_decision', MATCH_DECISIONS);
 
 /** One "find trials for this patient" request, processed by the background worker. */
 export const matchRuns = pgTable(
@@ -196,6 +198,10 @@ export const matchResults = pgTable(
     /** Display order: best match first. */
     rank: integer('rank').notNull(),
     reviewed: boolean('reviewed').notNull().default(false),
+    // Week 6: the coordinator's review (see MatchReviewSchema).
+    decision: matchDecision('decision').notNull().default('pending'),
+    note: text('note'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
   },
   (t) => [index('match_results_run_idx').on(t.runId, t.rank)],
 );

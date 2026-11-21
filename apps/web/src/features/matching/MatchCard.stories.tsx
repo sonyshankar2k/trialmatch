@@ -1,10 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { TrialMatch } from '@trialmatch/shared';
-import { expect, userEvent, within } from 'storybook/test';
+import type { MatchResult } from '@trialmatch/shared';
+import { expect, fn, userEvent, within } from 'storybook/test';
 import { MatchCard } from './MatchPanel';
 
-const base: TrialMatch = {
+const base: MatchResult = {
+  id: 1,
   trialId: 7,
+  decision: 'pending',
+  note: null,
+  decidedAt: null,
   nctId: 'NCT99000001',
   title:
     'Once-weekly GLP-1 agonist vs placebo in adults with type 2 diabetes and obesity',
@@ -55,7 +59,7 @@ const base: TrialMatch = {
 const meta = {
   title: 'Matching/MatchCard',
   component: MatchCard,
-  args: { result: base },
+  args: { result: base, onReview: fn(async () => undefined) },
   decorators: [(Story) => <ul className="max-w-3xl">{Story()}</ul>],
 } satisfies Meta<typeof MatchCard>;
 export default meta;
@@ -122,5 +126,52 @@ export const NotEligible: Story = {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(toggle);
     await expect(canvas.getByRole('table')).toBeInTheDocument();
+  },
+};
+
+/** Week 6: a shortlisted match stands out, shows its note, and the toggle reports its state. */
+export const Shortlisted: Story = {
+  args: {
+    result: {
+      ...base,
+      decision: 'shortlisted',
+      note: 'Patient is keen. Check the latest eGFR before referral.',
+      decidedAt: '2026-11-20T09:30:00.000Z',
+    },
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const shortlist = canvas.getByRole('button', { name: 'Shortlist' });
+    await expect(shortlist).toHaveAttribute('aria-pressed', 'true');
+    await expect(
+      canvas.getByText(/Check the latest eGFR before referral/),
+    ).toBeInTheDocument();
+    // Pressing the active decision again clears it; the note is kept.
+    await userEvent.click(shortlist);
+    await expect(args.onReview).toHaveBeenCalledWith({
+      decision: 'pending',
+      note: 'Patient is keen. Check the latest eGFR before referral.',
+    });
+  },
+};
+
+/** Dismissed matches stay listed but start collapsed. */
+export const Dismissed: Story = {
+  args: {
+    result: {
+      ...base,
+      decision: 'dismissed',
+      note: 'Patient declined weekly injections.',
+      decidedAt: '2026-11-20T09:30:00.000Z',
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole('button', { name: 'Show 4 criteria' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    await expect(
+      canvas.getByRole('button', { name: 'Dismiss' }),
+    ).toHaveAttribute('aria-pressed', 'true');
   },
 };
