@@ -152,6 +152,11 @@ export type TrialUpdateStatus = (typeof TRIAL_UPDATE_STATUSES)[number];
 
 export interface TrialUpdate {
   id: number;
+  /**
+   * Goes up each time a newer registry change replaces this pending update.
+   * Apply and Keep send the revision the person reviewed: 409 if it moved on.
+   */
+  revision: number;
   trialId: number;
   nctId: string;
   /** The registry record's last update date (YYYY-MM-DD). */
@@ -171,8 +176,14 @@ export interface PendingTrialUpdate {
   update: TrialUpdate | null;
 }
 
-/** Applying an update edits the trial, so it carries the version the person read. */
-export const TrialUpdateApplySchema = z.object({
+/** Keeping the current version names the revision of the update the person reviewed. */
+export const TrialUpdateDismissSchema = z.object({
+  revision: z.number().int().min(1),
+});
+export type TrialUpdateDismissInput = z.input<typeof TrialUpdateDismissSchema>;
+
+/** Applying also edits the trial, so it carries the trial version read as well. */
+export const TrialUpdateApplySchema = TrialUpdateDismissSchema.extend({
   version: z.number().int().min(1),
 });
 export type TrialUpdateApplyInput = z.input<typeof TrialUpdateApplySchema>;

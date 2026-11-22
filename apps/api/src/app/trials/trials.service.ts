@@ -47,7 +47,7 @@ export type TrialProvenance = Partial<
 const pendingUpdateId = sql<
   number | null
 >`(select ${trialUpdates.id} from ${trialUpdates} where ${trialUpdates.trialId} = ${trials.id} and ${trialUpdates.status} = 'pending')`;
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /** `%` and `_` typed by a user are literal characters, not wildcards. */
 const likePattern = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -161,16 +161,18 @@ export class TrialsService {
   /**
    * Optimistic concurrency: the UPDATE only matches the version the client read.
    * If someone saved in between, nothing changes and the client gets 409 + the current record.
-   * Week 8: applying a registry update also sets the provenance in the same save.
+   * Week 8: applying a registry update also sets the provenance in the same
+   * save, inside the caller's transaction (`db`) so both commit together.
    */
   async update(
     id: number,
     input: z.output<typeof TrialUpdateSchema>,
     provenance: TrialProvenance = {},
+    db: Db | Tx = this.db,
   ): Promise<Trial> {
     const { version, criteria, ...fields } = input;
     const result = await this.uniqueNct(() =>
-      this.db.transaction(async (tx) => {
+      db.transaction(async (tx) => {
         const [updated] = await tx
           .update(trials)
           .set({
@@ -187,7 +189,7 @@ export class TrialsService {
       }),
     );
     if (result) return result;
-    throw new VersionConflict(await this.get(id)); // 404 if it was deleted instead
+    throw new VersionConflict(await this.get(id, db)); // 404 if it was deleted instead
   }
 
   async remove(id: number, version: number): Promise<void> {

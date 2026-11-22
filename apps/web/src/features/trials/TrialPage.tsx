@@ -66,6 +66,9 @@ function TrialEditor({ trial }: { trial?: Trial }) {
   const save = useSaveTrial();
   const remove = useDeleteTrial();
   const [base, setBase] = useState<Trial | undefined>(trial); // what the form started from
+  // The server's latest copy (refetched, or set by a save). Registry details and
+  // the screening notice read from it; the form, its diff and version use `base`.
+  const latest = trial ?? base;
   const [conflict, setConflict] = useState<Trial | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -202,33 +205,36 @@ function TrialEditor({ trial }: { trial?: Trial }) {
             {new Date(base.updatedAt).toLocaleString()} · Version {base.version}
           </p>
         )}
-        {base?.source === 'clinicaltrials_gov' && base.nctId && (
+        {base && latest?.source === 'clinicaltrials_gov' && latest.nctId && (
           <p className="mb-4 rounded-md border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-slate-700">
             Imported from ClinicalTrials.gov
-            {base.sourceLastUpdated &&
-              ` (record last updated ${formatDate(base.sourceLastUpdated)})`}
+            {latest.sourceLastUpdated &&
+              ` (record last updated ${formatDate(latest.sourceLastUpdated)})`}
             .{' '}
             <a
-              href={registryUrl(base.nctId)}
+              href={registryUrl(latest.nctId)}
               target="_blank"
               rel="noreferrer"
               className="font-medium text-brand-700 underline"
             >
-              View {base.nctId} on ClinicalTrials.gov
+              View {latest.nctId} on ClinicalTrials.gov
               <span className="sr-only"> (opens in a new tab)</span>
             </a>
           </p>
         )}
-        {base?.source === 'clinicaltrials_gov' && base.nctId && (
+        {base && latest?.source === 'clinicaltrials_gov' && latest.nctId && (
           <RegistrySync
             trial={base}
+            checkedAt={latest.sourceCheckedAt}
             unsavedChanges={form.formState.isDirty}
-            onTrialChanged={(next, note) => {
+            onTrialChanged={(next, note, kind) => {
               qc.setQueryData(trialKeys.detail(next.id), next);
+              setMessage(note);
+              // Keeping the current version changes no field or version: the draft stays.
+              if (kind === 'kept') return;
               setBase(next);
               setConflict(null);
               form.reset(toFormValues(next));
-              setMessage(note);
             }}
           />
         )}
@@ -238,7 +244,7 @@ function TrialEditor({ trial }: { trial?: Trial }) {
       {base && (
         <MatchPanel
           subject={{ kind: 'trial', id: base.id }}
-          changedAt={base.updatedAt}
+          changedAt={latest?.updatedAt}
         />
       )}
     </>

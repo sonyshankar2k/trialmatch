@@ -91,25 +91,26 @@ export function useCheckTrial(trialId: number) {
   });
 }
 
-/** Apply the update (with the trial version read) or keep the trial as it is. */
+/**
+ * Apply the update or keep the trial as it is. Both send the update revision
+ * reviewed (409 if the registry changed again); Apply also the trial version read.
+ */
 export function useResolveUpdate(trialId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (
       action:
-        | { kind: 'apply'; id: number; version: number }
-        | {
-            kind: 'dismiss';
-            id: number;
-          },
+        | { kind: 'apply'; id: number; revision: number; version: number }
+        | { kind: 'dismiss'; id: number; revision: number },
     ) =>
       action.kind === 'apply'
         ? api<Trial>(`/registry/updates/${action.id}/apply`, {
             method: 'POST',
-            body: { version: action.version },
+            body: { revision: action.revision, version: action.version },
           })
         : api<Trial>(`/registry/updates/${action.id}/dismiss`, {
             method: 'POST',
+            body: { revision: action.revision },
           }),
     onSuccess: (trial) => {
       qc.setQueryData(trialKeys.detail(trial.id), trial);
@@ -118,7 +119,7 @@ export function useResolveUpdate(trialId: number) {
       });
       void qc.invalidateQueries({ queryKey: ['trials', 'list'] });
     },
-    // Someone else may have resolved it: show what is pending now.
+    // Someone else resolved it, or the registry changed again: show what is pending now.
     onError: () =>
       void qc.invalidateQueries({ queryKey: registryKeys.update(trialId) }),
   });

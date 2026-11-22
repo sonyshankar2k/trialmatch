@@ -5,6 +5,7 @@ import { UpdateDetails } from './RegistryUpdate';
 
 const update: TrialUpdate = {
   id: 5,
+  revision: 1,
   trialId: 7,
   nctId: 'NCT90000001',
   registryLastUpdated: '2026-11-19',

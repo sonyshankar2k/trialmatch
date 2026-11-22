@@ -171,6 +171,7 @@ describe('registry sync (Week 8)', () => {
       trialId: trial.id,
       nctId: NCT,
       status: 'pending',
+      revision: 1,
       registryLastUpdated: '2026-03-02',
       fields: [
         {
@@ -206,7 +207,97 @@ describe('registry sync (Week 8)', () => {
     await sync(auth);
     const replaced = await pending(auth, trial.id);
     expect(replaced?.id).toBe(update?.id);
+    expect(replaced?.revision).toBe(2);
     expect(replaced?.fields.map((f) => f.field)).toEqual(['status']);
+
+    // Seeing the same change again (Check now) is not a new revision.
+    await t
+      .http()
+      .post(`/api/registry/trials/${trial.id}/check`)
+      .set(auth)
+      .expect(200);
+    expect((await pending(auth, trial.id))?.revision).toBe(2);
+  });
+
+  it('refuses a decision on a revision that was replaced while it was reviewed', async () => {
+    const { auth, trial } = await imported();
+    registry.study = { ...original(), status: 'SUSPENDED', date: '2026-03-02' };
+    await sync(auth);
+    const reviewed = (await pending(auth, trial.id)) as TrialUpdate;
+
+    // Meanwhile the registry changes again and the daily check replaces it.
+    registry.study = {
+      ...registry.study,
+      date: '2026-03-09',
+      exclusion: ['Current smoker', 'Pregnancy'],
+    };
+    await sync(auth);
+
+    for (const [path, body] of [
+      ['apply', { revision: reviewed.revision, version: trial.version }],
+      ['dismiss', { revision: reviewed.revision }],
+    ] as const) {
+      const res = await t
+        .http()
+        .post(`/api/registry/updates/${reviewed.id}/${path}`)
+        .set(auth)
+        .send(body)
+        .expect(409);
+      expect(res.body.message).toMatch(/changed this study again/);
+    }
+    // Nothing unseen was applied or kept.
+    expect(await getTrial(auth, trial.id)).toMatchObject({
+      status: 'recruiting',
+      version: trial.version,
+      sourceLastUpdated: '2026-01-10',
+    });
+    const latest = (await pending(auth, trial.id)) as TrialUpdate;
+    expect(latest).toMatchObject({ status: 'pending', revision: 2 });
+    expect(latest.criteria.added).toEqual([
+      { type: 'exclusion', text: 'Pregnancy' },
+    ]);
+
+    // Reviewing the latest revision works.
+    await t
+      .http()
+      .post(`/api/registry/updates/${latest.id}/apply`)
+      .set(auth)
+      .send({ revision: latest.revision, version: trial.version })
+      .expect(200);
+  });
+
+  it('a check running alongside Apply neither re-raises the change nor breaks it', async () => {
+    const { auth, trial } = await imported();
+    registry.study = { ...original(), status: 'COMPLETED', date: '2026-04-01' };
+    await sync(auth);
+    const update = (await pending(auth, trial.id)) as TrialUpdate;
+    const check = () =>
+      t.http().post(`/api/registry/trials/${trial.id}/check`).set(auth);
+    const apply = (version: number) =>
+      t
+        .http()
+        .post(`/api/registry/updates/${update.id}/apply`)
+        .set(auth)
+        .send({ revision: update.revision, version });
+
+    // A stale Apply fails with 409 (not a database error) and leaves the update pending.
+    const [stale, checked] = await Promise.all([apply(99), check()]);
+    expect(stale.status).toBe(409);
+    expect(checked.status).toBe(200);
+    expect(await pending(auth, trial.id)).toMatchObject({
+      id: update.id,
+      status: 'pending',
+    });
+
+    const [applied, after] = await Promise.all([apply(trial.version), check()]);
+    expect(applied.status).toBe(200);
+    expect(after.status).toBe(200);
+    // Whichever ran second saw the other's result: nothing is left pending.
+    expect(await pending(auth, trial.id)).toBeNull();
+    expect(await getTrial(auth, trial.id)).toMatchObject({
+      status: 'completed',
+      pendingUpdateId: null,
+    });
   });
 
   it('applies an update: registry values win, local edits elsewhere stay', async () => {
@@ -244,7 +335,7 @@ describe('registry sync (Week 8)', () => {
       .http()
       .post(`/api/registry/updates/${update.id}/apply`)
       .set(auth)
-      .send({ version: trial.version })
+      .send({ revision: update.revision, version: trial.version })
       .expect(409);
     expect((await pending(auth, trial.id))?.id).toBe(update.id);
 
@@ -253,7 +344,7 @@ describe('registry sync (Week 8)', () => {
         .http()
         .post(`/api/registry/updates/${update.id}/apply`)
         .set(auth)
-        .send({ version: edited.version })
+        .send({ revision: update.revision, version: edited.version })
         .expect(200)
     ).body as Trial;
     expect(applied).toMatchObject({
@@ -276,7 +367,7 @@ describe('registry sync (Week 8)', () => {
       .http()
       .post(`/api/registry/updates/${update.id}/apply`)
       .set(auth)
-      .send({ version: applied.version })
+      .send({ revision: update.revision, version: applied.version })
       .expect(409);
     expect(again.body.message).toMatch(/already applied/);
   });
@@ -292,6 +383,7 @@ describe('registry sync (Week 8)', () => {
         .http()
         .post(`/api/registry/updates/${update.id}/dismiss`)
         .set(auth)
+        .send({ revision: update.revision })
         .expect(200)
     ).body as Trial;
     expect(kept).toMatchObject({

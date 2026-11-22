@@ -18,14 +18,25 @@ import { useCheckTrial, useResolveUpdate, useTrialUpdate } from './api';
  */
 export function RegistrySync({
   trial,
+  checkedAt,
   unsavedChanges,
   onTrialChanged,
 }: {
+  /** The trial the form started from: its version goes with Apply. */
   trial: Trial;
+  /** When ClinicalTrials.gov was last asked, from the latest copy of the trial. */
+  checkedAt: string | null;
   /** Applying replaces the form's values, so it waits until edits are saved or discarded. */
   unsavedChanges: boolean;
-  /** The trial after an update was applied or kept (or a newer version on 409). */
-  onTrialChanged: (trial: Trial, message: string) => void;
+  /**
+   * The trial after a decision. `applied` and `reloaded` (a newer version on
+   * 409) replace the form; `kept` changes only registry details, so a draft stays.
+   */
+  onTrialChanged: (
+    trial: Trial,
+    message: string,
+    kind: 'applied' | 'kept' | 'reloaded',
+  ) => void;
 }) {
   const pending = useTrialUpdate(trial.id, true);
   const check = useCheckTrial(trial.id);
@@ -47,16 +58,26 @@ export function RegistrySync({
     if (!update) return;
     resolve.mutate(
       kind === 'apply'
-        ? { kind, id: update.id, version: trial.version }
-        : { kind, id: update.id },
+        ? {
+            kind,
+            id: update.id,
+            revision: update.revision,
+            version: trial.version,
+          }
+        : { kind, id: update.id, revision: update.revision },
       {
         onSuccess: (saved) =>
-          onTrialChanged(
-            saved,
-            kind === 'apply'
-              ? 'Update applied. Screen your patients again so matches use the new version.'
-              : 'Kept the current version. This registry change won’t be raised again.',
-          ),
+          kind === 'apply'
+            ? onTrialChanged(
+                saved,
+                'Update applied. Screen your patients again so matches use the new version.',
+                'applied',
+              )
+            : onTrialChanged(
+                saved,
+                'Kept the current version. This registry change won’t be raised again.',
+                'kept',
+              ),
         onError: (err) => {
           // The trial was saved by someone else meanwhile: load it and review again.
           if (
@@ -67,6 +88,7 @@ export function RegistrySync({
             onTrialChanged(
               err.body.current as Trial,
               'The trial was changed meanwhile. Its latest version is loaded; review the update again.',
+              'reloaded',
             );
         },
       },
@@ -82,8 +104,8 @@ export function RegistrySync({
         <h2 id="registry-sync-heading" className="flex-1 text-sm font-medium">
           ClinicalTrials.gov updates
           <span className="ml-2 font-normal text-slate-500">
-            {trial.sourceCheckedAt
-              ? `Last checked ${new Date(trial.sourceCheckedAt).toLocaleString()}`
+            {checkedAt
+              ? `Last checked ${new Date(checkedAt).toLocaleString()}`
               : 'Not checked yet'}
           </span>
         </h2>

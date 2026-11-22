@@ -14,6 +14,7 @@ import {
   RegistryImportSchema,
   RegistrySearchQuerySchema,
   TrialUpdateApplySchema,
+  TrialUpdateDismissSchema,
   type RegistryPreview,
   type RegistrySearchResult,
   type RegistrySyncResult,
@@ -30,6 +31,7 @@ class SearchQuery extends createZodDto(RegistrySearchQuerySchema) {}
 class ImportBody extends createZodDto(RegistryImportSchema) {}
 class NctParam extends createZodDto(z.object({ nctId: NctIdSchema })) {}
 class ApplyBody extends createZodDto(TrialUpdateApplySchema) {}
+class DismissBody extends createZodDto(TrialUpdateDismissSchema) {}
 
 /**
  * ClinicalTrials.gov import. Each call reaches the public registry, so these
@@ -78,25 +80,26 @@ export class RegistryController {
     return { update: await this.sync_.pending(id) };
   }
 
-  /** Take the registry's changes. Carries the trial version read: 409 if stale. */
+  /** Take the registry's changes. Carries the update revision and trial version read: 409 if stale. */
   @Post('updates/:id/apply')
   @HttpCode(200)
   apply(
     @Param() { id }: IdParam,
-    @Body() { version }: ApplyBody,
+    @Body() { revision, version }: ApplyBody,
     @CurrentUser() user: AuthUser,
   ): Promise<Trial> {
-    return this.sync_.apply(id, version, user.id);
+    return this.sync_.apply(id, revision, version, user.id);
   }
 
-  /** Keep the trial as it is; the registry's version counts as seen. */
+  /** Keep the trial as it is; the registry's version counts as seen. Carries the revision reviewed. */
   @Post('updates/:id/dismiss')
   @HttpCode(200)
   dismiss(
     @Param() { id }: IdParam,
+    @Body() { revision }: DismissBody,
     @CurrentUser() user: AuthUser,
   ): Promise<Trial> {
-    return this.sync_.dismiss(id, user.id);
+    return this.sync_.dismiss(id, revision, user.id);
   }
 
   @Post('imports')

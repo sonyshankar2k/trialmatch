@@ -264,6 +264,8 @@ export const trialUpdates = pgTable(
     trialId: integer('trial_id')
       .notNull()
       .references(() => trials.id, { onDelete: 'cascade' }),
+    /** Bumped when a newer registry change replaces the pending update. */
+    revision: integer('revision').notNull().default(1),
     registryLastUpdated: date('registry_last_updated', { mode: 'string' }),
     fields: jsonb('fields').$type<FieldChange[]>().notNull(),
     criteria: jsonb('criteria').$type<CriteriaChange>().notNull(),

@@ -18,7 +18,7 @@ import {
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/database';
 import { trials, trialUpdates, users } from '../db/schema';
-import { TrialsService } from '../trials/trials.service';
+import { TrialsService, type Tx } from '../trials/trials.service';
 import { NotATrialError, studyToTrial } from './ctgov-mapper';
 import { CtgovClient } from './ctgov.client';
 import {
@@ -141,16 +141,25 @@ export class RegistrySyncService {
   /**
    * Take the registry's values for the changed fields, and its criteria changes
    * (removed criteria go, added ones are appended; local wording of the others
-   * is kept). `version` is the trial version the person read: 409 if stale.
+   * is kept). `revision` is the update the person reviewed and `version` the
+   * trial they read: 409 if either is stale. Resolving the update and saving
+   * the trial commit together, so a failed save leaves the update pending.
    */
   async apply(
     updateId: number,
+    revision: number,
     version: number,
     userId: number,
   ): Promise<Trial> {
-    const update = await this.claim(updateId, 'applied', userId);
-    try {
-      const trial = await this.trials.get(update.trialId);
+    return this.db.transaction(async (tx) => {
+      const update = await this.resolve(
+        tx,
+        updateId,
+        revision,
+        'applied',
+        userId,
+      );
+      const trial = await this.trials.get(update.trialId, tx);
       const patch: Record<string, unknown> = {};
       for (const { field } of update.fields) {
         patch[field] = update.snapshot[field];
@@ -170,40 +179,47 @@ export class RegistrySyncService {
           ...added,
         ];
       }
-      return await this.trials.update(
+      return this.trials.update(
         trial.id,
         TrialUpdateSchema.parse({ ...patch, version }),
         {
           sourceSnapshot: update.snapshot,
           sourceLastUpdated: update.registryLastUpdated,
         },
+        tx,
       );
-    } catch (err) {
-      await this.unclaim(updateId); // e.g. a 409: the person reloads and tries again
-      throw err;
-    }
+    });
   }
 
-  /** Keep the trial as it is; the registry's version counts as seen. */
-  async dismiss(updateId: number, userId: number): Promise<Trial> {
-    const update = await this.claim(updateId, 'dismissed', userId);
-    await this.db
-      .update(trials)
-      .set({
-        sourceSnapshot: update.snapshot,
-        sourceLastUpdated: update.registryLastUpdated,
-      })
-      .where(eq(trials.id, update.trialId));
-    return this.trials.get(update.trialId);
+  /** Keep the trial as it is; the registry's version (the revision reviewed) counts as seen. */
+  async dismiss(
+    updateId: number,
+    revision: number,
+    userId: number,
+  ): Promise<Trial> {
+    return this.db.transaction(async (tx) => {
+      const update = await this.resolve(
+        tx,
+        updateId,
+        revision,
+        'dismissed',
+        userId,
+      );
+      await tx
+        .update(trials)
+        .set({
+          sourceSnapshot: update.snapshot,
+          sourceLastUpdated: update.registryLastUpdated,
+        })
+        .where(eq(trials.id, update.trialId));
+      return this.trials.get(update.trialId, tx);
+    });
   }
 
   /** Fetch, compare, and record the result (a pending update, or the new snapshot). */
   private async check(trial: Trial): Promise<void> {
     const nctId = trial.nctId as string;
-    const [{ snapshot }] = await this.db
-      .select({ snapshot: trials.sourceSnapshot })
-      .from(trials)
-      .where(eq(trials.id, trial.id));
+    // The registry request happens outside the transaction; the comparison inside it.
     const study = await this.ctgov.getStudy(nctId, { fresh: true });
     let converted: ReturnType<typeof studyToTrial>;
     try {
@@ -215,13 +231,16 @@ export class RegistrySyncService {
         message: err.message,
       } satisfies ApiError);
     }
-    const diff = diffRegistry(
-      snapshot ?? trialAsRegistryInput(trial),
-      converted.trial,
-      trial,
-    );
-    const now = new Date();
     await this.db.transaction(async (tx) => {
+      // Waits for any Apply / Keep on this trial, then reads the baseline they left.
+      const snapshot = await this.lockTrial(tx, trial.id);
+      const current = await this.trials.get(trial.id, tx);
+      const diff = diffRegistry(
+        snapshot ?? trialAsRegistryInput(current),
+        converted.trial,
+        current,
+      );
+      const now = new Date();
       if (!hasChanges(diff)) {
         // In step (or the registry changed back): the registry's version is the new baseline.
         await tx
@@ -250,14 +269,23 @@ export class RegistrySyncService {
         warnings: converted.warnings,
         detectedAt: now,
       };
-      await tx
-        .insert(trialUpdates)
-        .values({ trialId: trial.id, ...values })
-        .onConflictDoUpdate({
-          target: trialUpdates.trialId,
-          targetWhere: sql`${trialUpdates.status} = 'pending'`,
-          set: values,
-        });
+      const [pending] = await tx
+        .select()
+        .from(trialUpdates)
+        .where(
+          and(
+            eq(trialUpdates.trialId, trial.id),
+            eq(trialUpdates.status, 'pending'),
+          ),
+        );
+      if (!pending)
+        await tx.insert(trialUpdates).values({ trialId: trial.id, ...values });
+      else if (!sameChange(pending, values))
+        // Someone may be reviewing the old one: a new revision makes their decision stale.
+        await tx
+          .update(trialUpdates)
+          .set({ ...values, revision: sql`${trialUpdates.revision} + 1` })
+          .where(eq(trialUpdates.id, pending.id));
       await tx
         .update(trials)
         .set({ sourceCheckedAt: now })
@@ -265,37 +293,62 @@ export class RegistrySyncService {
     });
   }
 
-  /** Marks a pending update resolved; only one person can win. */
-  private async claim(
+  /** Row-locks the trial for the rest of the transaction; returns its snapshot. */
+  private async lockTrial(tx: Tx, trialId: number) {
+    const [row] = await tx
+      .select({ snapshot: trials.sourceSnapshot })
+      .from(trials)
+      .where(eq(trials.id, trialId))
+      .for('update');
+    if (!row) throw new NotFoundException('Trial not found.');
+    return row.snapshot;
+  }
+
+  /**
+   * Marks a pending update resolved, under the trial's lock so a check cannot
+   * raise the same change meanwhile. Only the revision the person reviewed can
+   * be resolved, and only once.
+   */
+  private async resolve(
+    tx: Tx,
     id: number,
+    revision: number,
     status: 'applied' | 'dismissed',
     userId: number,
   ): Promise<UpdateRow> {
-    const [row] = await this.db
-      .update(trialUpdates)
-      .set({ status, resolvedAt: new Date(), resolvedById: userId })
-      .where(and(eq(trialUpdates.id, id), eq(trialUpdates.status, 'pending')))
-      .returning();
-    if (row) return row;
-    const [exists] = await this.db
-      .select({ status: trialUpdates.status })
+    const [found] = await tx
+      .select({ trialId: trialUpdates.trialId })
       .from(trialUpdates)
       .where(eq(trialUpdates.id, id));
-    if (!exists) throw new NotFoundException('Update not found.');
-    throw new ConflictException({
-      statusCode: 409,
-      message:
-        exists.status === 'applied'
-          ? 'Someone already applied this update.'
-          : 'Someone already chose to keep the current version.',
-    } satisfies ApiError);
-  }
-
-  private async unclaim(id: number) {
-    await this.db
-      .update(trialUpdates)
-      .set({ status: 'pending', resolvedAt: null, resolvedById: null })
+    if (!found)
+      throw new NotFoundException(
+        'This update is no longer pending: the trial is in step with ClinicalTrials.gov.',
+      );
+    await this.lockTrial(tx, found.trialId);
+    const [row] = await tx
+      .select()
+      .from(trialUpdates)
       .where(eq(trialUpdates.id, id));
+    if (!row)
+      throw new NotFoundException(
+        'This update is no longer pending: the trial is in step with ClinicalTrials.gov.',
+      );
+    const conflict = (message: string) =>
+      new ConflictException({ statusCode: 409, message } satisfies ApiError);
+    if (row.status === 'applied')
+      throw conflict('Someone already applied this update.');
+    if (row.status === 'dismissed')
+      throw conflict('Someone already chose to keep the current version.');
+    if (row.revision !== revision)
+      throw conflict(
+        'ClinicalTrials.gov changed this study again since you looked. Review the latest changes.',
+      );
+    const [resolved] = await tx
+      .update(trialUpdates)
+      .set({ status, resolvedAt: new Date(), resolvedById: userId })
+      .where(eq(trialUpdates.id, id))
+      .returning();
+    return resolved;
   }
 
   private async pendingCount(trialIds: number[]): Promise<number> {
@@ -325,6 +378,26 @@ export class RegistrySyncService {
   }
 }
 
+/** The same registry change seen again (e.g. Check now twice): keep the revision. */
+const sameChange = (
+  row: UpdateRow,
+  v: Pick<UpdateRow, 'registryLastUpdated' | 'fields' | 'criteria'>,
+) =>
+  row.registryLastUpdated === v.registryLastUpdated &&
+  stable([row.fields, row.criteria]) === stable([v.fields, v.criteria]);
+
+/** JSON with sorted keys: jsonb does not keep the key order it was given. */
+const stable = (v: unknown): string =>
+  JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === 'object' && !Array.isArray(x)
+      ? Object.fromEntries(
+          Object.entries(x as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : 1,
+          ),
+        )
+      : x,
+  );
+
 const criterionKey = (c: CriterionInput) =>
   `${c.type}\u0000${c.text.replace(/\s+/g, ' ').trim()}`;
 
@@ -336,6 +409,7 @@ function toTrialUpdate(row: {
   const u = row.update;
   return {
     id: u.id,
+    revision: u.revision,
     trialId: u.trialId,
     nctId: row.nctId ?? (u.snapshot as RegistryTrialInput).nctId,
     registryLastUpdated: u.registryLastUpdated,
