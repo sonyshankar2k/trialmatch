@@ -54,6 +54,24 @@ export class MatchingController {
     return this.matching.listForPatient(user.id, id);
   }
 
+  /** Week 7: screen your own patients for this trial, in the background (202 + the queued run). */
+  @Post('trials/:id/match-runs')
+  @HttpCode(202)
+  startForTrial(
+    @CurrentUser() user: AuthUser,
+    @Param() { id }: IdParam,
+  ): Promise<MatchRun> {
+    return this.matching.startForTrial(user.id, id);
+  }
+
+  @Get('trials/:id/match-runs')
+  listForTrial(
+    @CurrentUser() user: AuthUser,
+    @Param() { id }: IdParam,
+  ): Promise<MatchRun[]> {
+    return this.matching.listForTrial(user.id, id);
+  }
+
   @Get('match-runs/:id')
   get(
     @CurrentUser() user: AuthUser,

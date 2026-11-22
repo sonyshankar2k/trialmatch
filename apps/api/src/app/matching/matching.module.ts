@@ -99,7 +99,7 @@ class MatchingInfrastructure implements OnModuleInit, OnApplicationShutdown {
         events: MatchEvents,
       ) =>
         new MatchRunner(db, createEngine(readEngineConfig(config)), events, {
-          maxTrials: config.get('MATCH_MAX_TRIALS', { infer: true }),
+          maxCandidates: config.get('MATCH_MAX_TRIALS', { infer: true }),
           stepDelayMs: config.get('MATCH_STEP_DELAY_MS', { infer: true }),
         }),
     },

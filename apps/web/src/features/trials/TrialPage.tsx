@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { ConflictBanner } from '../../components/ConflictBanner';
 import { ApiRequestError, errorMessage } from '../../lib/api';
 import { formatDate } from '../../lib/dates';
+import { MatchPanel } from '../matching/MatchPanel';
 import { changedFields } from '../../lib/diff';
 import { applyServerErrors } from '../../lib/forms';
 import { trialKeys, trialQuery, useDeleteTrial, useSaveTrial } from './api';
@@ -128,95 +129,99 @@ function TrialEditor({ trial }: { trial?: Trial }) {
   };
 
   return (
-    <form onSubmit={form.handleSubmit((v) => submit(v))} noValidate>
-      <Link
-        to="/trials"
-        className="text-sm text-slate-500 hover:text-slate-800"
-      >
-        ← Trials
-      </Link>
-      <div className="mt-1 mb-4 flex flex-wrap items-start gap-3">
-        <h1 className="min-w-0 flex-1 basis-80 text-2xl font-semibold">
-          {base ? base.title : 'New trial'}
-        </h1>
-        {base && !confirmDelete && (
-          <button
-            type="button"
-            className="btn-danger"
-            onClick={() => setConfirmDelete(true)}
-          >
-            Delete
-          </button>
-        )}
-        {base && confirmDelete && (
-          <>
-            <span className="text-sm text-slate-600">Delete this trial?</span>
+    <>
+      <form onSubmit={form.handleSubmit((v) => submit(v))} noValidate>
+        <Link
+          to="/trials"
+          className="text-sm text-slate-500 hover:text-slate-800"
+        >
+          ← Trials
+        </Link>
+        <div className="mt-1 mb-4 flex flex-wrap items-start gap-3">
+          <h1 className="min-w-0 flex-1 basis-80 text-2xl font-semibold">
+            {base ? base.title : 'New trial'}
+          </h1>
+          {base && !confirmDelete && (
             <button
               type="button"
               className="btn-danger"
-              onClick={onDelete}
-              disabled={remove.isPending}
+              onClick={() => setConfirmDelete(true)}
             >
-              Yes, delete
+              Delete
             </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setConfirmDelete(false)}
-            >
-              Cancel
-            </button>
-          </>
-        )}
-        <button
-          type="submit"
-          className="btn-primary"
-          disabled={form.formState.isSubmitting}
-        >
-          {form.formState.isSubmitting
-            ? 'Saving…'
-            : base
-              ? 'Save changes'
-              : 'Create trial'}
-        </button>
-      </div>
-
-      {conflict && (
-        <ConflictBanner
-          onReload={loadTheirs}
-          onOverwrite={form.handleSubmit((v) => submit(v, conflict.version))}
-        />
-      )}
-      {message && (
-        <p role="status" className="mb-4 text-sm text-slate-600">
-          {message}
-        </p>
-      )}
-      {base && (
-        <p className="mb-4 text-xs text-slate-500">
-          {base.source === 'clinicaltrials_gov' ? 'Imported' : 'Created'} by{' '}
-          {base.createdBy} · Last saved{' '}
-          {new Date(base.updatedAt).toLocaleString()} · Version {base.version}
-        </p>
-      )}
-      {base?.source === 'clinicaltrials_gov' && base.nctId && (
-        <p className="mb-4 rounded-md border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-slate-700">
-          Imported from ClinicalTrials.gov
-          {base.sourceLastUpdated &&
-            ` (record last updated ${formatDate(base.sourceLastUpdated)})`}
-          .{' '}
-          <a
-            href={registryUrl(base.nctId)}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-brand-700 underline"
+          )}
+          {base && confirmDelete && (
+            <>
+              <span className="text-sm text-slate-600">Delete this trial?</span>
+              <button
+                type="button"
+                className="btn-danger"
+                onClick={onDelete}
+                disabled={remove.isPending}
+              >
+                Yes, delete
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setConfirmDelete(false)}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+          <button
+            type="submit"
+            className="btn-primary"
+            disabled={form.formState.isSubmitting}
           >
-            View {base.nctId} on ClinicalTrials.gov
-            <span className="sr-only"> (opens in a new tab)</span>
-          </a>
-        </p>
-      )}
-      <TrialFormFields form={form} />
-    </form>
+            {form.formState.isSubmitting
+              ? 'Saving…'
+              : base
+                ? 'Save changes'
+                : 'Create trial'}
+          </button>
+        </div>
+
+        {conflict && (
+          <ConflictBanner
+            onReload={loadTheirs}
+            onOverwrite={form.handleSubmit((v) => submit(v, conflict.version))}
+          />
+        )}
+        {message && (
+          <p role="status" className="mb-4 text-sm text-slate-600">
+            {message}
+          </p>
+        )}
+        {base && (
+          <p className="mb-4 text-xs text-slate-500">
+            {base.source === 'clinicaltrials_gov' ? 'Imported' : 'Created'} by{' '}
+            {base.createdBy} · Last saved{' '}
+            {new Date(base.updatedAt).toLocaleString()} · Version {base.version}
+          </p>
+        )}
+        {base?.source === 'clinicaltrials_gov' && base.nctId && (
+          <p className="mb-4 rounded-md border border-brand-100 bg-brand-50 px-3 py-2 text-sm text-slate-700">
+            Imported from ClinicalTrials.gov
+            {base.sourceLastUpdated &&
+              ` (record last updated ${formatDate(base.sourceLastUpdated)})`}
+            .{' '}
+            <a
+              href={registryUrl(base.nctId)}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-brand-700 underline"
+            >
+              View {base.nctId} on ClinicalTrials.gov
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          </p>
+        )}
+        <TrialFormFields form={form} />
+      </form>
+      {/* Week 7: outside the form, so its buttons never submit the trial. */}
+      {base && <MatchPanel subject={{ kind: 'trial', id: base.id }} />}
+    </>
   );
 }

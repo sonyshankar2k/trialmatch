@@ -149,14 +149,21 @@ export const matchRunStatus = pgEnum('match_run_status', MATCH_RUN_STATUSES);
 export const eligibility = pgEnum('eligibility', ELIGIBILITY);
 export const matchDecision = pgEnum('match_decision', MATCH_DECISIONS);
 
-/** One "find trials for this patient" request, processed by the background worker. */
+/**
+ * One matching request, processed by the background worker: "find trials for
+ * this patient" (patient_id set) or, since Week 7, "find patients for this
+ * trial" (trial_id set; the owner's patients are screened). Exactly one is set.
+ */
 export const matchRuns = pgTable(
   'match_runs',
   {
     id: serial('id').primaryKey(),
-    patientId: integer('patient_id')
-      .notNull()
-      .references(() => patients.id, { onDelete: 'cascade' }),
+    patientId: integer('patient_id').references(() => patients.id, {
+      onDelete: 'cascade',
+    }),
+    trialId: integer('trial_id').references(() => trials.id, {
+      onDelete: 'cascade',
+    }),
     ownerId: integer('owner_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -171,7 +178,14 @@ export const matchRuns = pgTable(
     createdAt: timestamps.createdAt,
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
-  (t) => [index('match_runs_patient_idx').on(t.patientId, t.createdAt)],
+  (t) => [
+    index('match_runs_patient_idx').on(t.patientId, t.createdAt),
+    index('match_runs_trial_idx').on(t.trialId, t.ownerId, t.createdAt),
+    check(
+      'match_runs_one_subject',
+      sql`num_nonnulls(${t.patientId}, ${t.trialId}) = 1`,
+    ),
+  ],
 );
 
 /**
@@ -188,6 +202,11 @@ export const matchResults = pgTable(
     trialId: integer('trial_id').references(() => trials.id, {
       onDelete: 'set null',
     }),
+    /** Week 7: the patient of this pair (a trial run has one result per patient). */
+    patientId: integer('patient_id').references(() => patients.id, {
+      onDelete: 'cascade',
+    }),
+    pseudonym: varchar('pseudonym', { length: 30 }).notNull(),
     nctId: varchar('nct_id', { length: 11 }),
     title: varchar('title', { length: 300 }).notNull(),
     condition: varchar('condition', { length: 200 }).notNull(),
@@ -202,6 +221,15 @@ export const matchResults = pgTable(
     decision: matchDecision('decision').notNull().default('pending'),
     note: text('note'),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
+    /**
+     * Week 7: when the review was last saved (also when it was cleared). The
+     * latest saved review of a patient–trial pair is carried into new runs from
+     * either side.
+     */
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   },
-  (t) => [index('match_results_run_idx').on(t.runId, t.rank)],
+  (t) => [
+    index('match_results_run_idx').on(t.runId, t.rank),
+    index('match_results_pair_idx').on(t.patientId, t.trialId),
+  ],
 );

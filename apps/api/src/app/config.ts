@@ -62,7 +62,7 @@ export const EnvSchema = z.object({
   MATCH_ENGINE: z.enum(['auto', 'claude', 'rules']).default('auto'),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-5-5'),
-  /** How many candidate trials are assessed per run. */
+  /** How many candidates one run assesses: trials for a patient, or patients for a trial. */
   MATCH_MAX_TRIALS: z.coerce.number().int().min(1).max(20).default(5),
   /** Pause between trials so progress is visible in a demo. 0 in tests. */
   MATCH_STEP_DELAY_MS: z.coerce.number().int().min(0).max(5000).default(0),

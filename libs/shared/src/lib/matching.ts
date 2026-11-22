@@ -91,6 +91,13 @@ export type MatchReviewInput = z.input<typeof MatchReviewSchema>;
 /** A stored match: the assessment plus the coordinator's review. */
 export interface MatchResult extends TrialMatch {
   id: number;
+  /**
+   * Week 7: every result is one patient–trial pair, whichever side the run
+   * started from. Null only if the patient was deleted meanwhile.
+   */
+  patientId: number | null;
+  /** Copied, so the result still reads correctly if the patient is renamed. */
+  pseudonym: string;
   decision: MatchDecision;
   note: string | null;
   decidedAt: string | null;
@@ -102,9 +109,19 @@ export const DECISION_LABELS: Record<MatchDecision, string> = {
   dismissed: 'Dismissed',
 };
 
+/**
+ * Week 7: a run starts from a patient ("find trials for this patient") or from a
+ * trial ("find patients for this trial", screening the coordinator's own patients).
+ */
+export type MatchRunKind = 'patient' | 'trial';
+
 export interface MatchRun {
   id: number;
-  patientId: number;
+  kind: MatchRunKind;
+  /** Set for patient runs. */
+  patientId: number | null;
+  /** Set for trial runs. */
+  trialId: number | null;
   status: MatchRunStatus;
   progress: number;
   stage: string;

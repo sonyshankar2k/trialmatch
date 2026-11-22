@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import type { MatchRun, Patient } from '@trialmatch/shared';
 import { http, HttpResponse } from 'msw';
 import { vi } from 'vitest';
+import { makeTrial } from '../../testing/fixtures';
 import { renderApp } from '../../testing/render';
 import { server } from '../../testing/server';
 
@@ -20,7 +21,9 @@ const patient: Patient = {
 
 const run = (overrides: Partial<MatchRun>): MatchRun => ({
   id: 3,
+  kind: 'patient',
   patientId: 1,
+  trialId: null,
   status: 'queued',
   progress: 0,
   stage: 'Waiting for a worker',
@@ -41,6 +44,8 @@ const finished = run({
   results: [
     {
       id: 1,
+      patientId: 1,
+      pseudonym: 'P-0001',
       trialId: 7,
       nctId: 'NCT99000001',
       title: 'GLP-1 agonist in type 2 diabetes',
@@ -232,5 +237,71 @@ describe('MatchPanel review (Week 6)', () => {
     await vi.waitFor(() => expect(saved).toEqual(['referral-P-0001.pdf']));
     expect(createObjectURL).toHaveBeenCalledOnce();
     click.mockRestore();
+  });
+});
+
+describe('MatchPanel on a trial (Week 7)', () => {
+  const screening = run({
+    kind: 'trial',
+    patientId: null,
+    trialId: 7,
+    status: 'succeeded',
+    progress: 100,
+    engine: 'rules',
+    stage: '1 patient checked: 0 likely eligible, 1 need review',
+    finishedAt: '2026-11-01T10:00:05.000Z',
+    results: finished.results,
+  });
+
+  it('screens your patients for the trial and shortlists one', async () => {
+    let started = false;
+    server.use(
+      http.get('*/api/trials/7', () => HttpResponse.json(makeTrial({ id: 7 }))),
+      http.get('*/api/trials/7/match-runs', () => HttpResponse.json([])),
+      http.post('*/api/trials/7/match-runs', () => {
+        started = true;
+        return HttpResponse.json(
+          { ...screening, status: 'queued', results: [] },
+          { status: 202 },
+        );
+      }),
+      http.get('*/api/match-runs/3/events', () =>
+        sse({ type: 'run', run: screening }),
+      ),
+      http.patch('*/api/match-results/1', async ({ request }) =>
+        HttpResponse.json({
+          ...screening.results[0],
+          ...((await request.json()) as object),
+          decidedAt: '2026-11-21T09:00:00.000Z',
+        }),
+      ),
+    );
+    const { user } = renderApp('/trials/7');
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Find eligible patients' }),
+    );
+    expect(started).toBe(true);
+    expect(
+      await screen.findByText(
+        '1 patient checked: 0 likely eligible, 1 need review',
+      ),
+    ).toBeInTheDocument();
+
+    // The card is headed by the patient, linking to their page.
+    const link = screen.getByRole('link', { name: 'P-0001' });
+    expect(link).toHaveAttribute('href', '/patients/1');
+    const card = link.closest('li') as HTMLElement;
+    expect(within(card).getByText('Needs review')).toBeInTheDocument();
+
+    await user.click(within(card).getByRole('button', { name: 'Shortlist' }));
+    expect(
+      await screen.findByText(/^1 patient shortlisted\./),
+    ).toBeInTheDocument();
+    // Referral summaries are per patient, so there is no download here.
+    expect(
+      screen.queryByRole('button', { name: /referral summary/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Screen again' })).toBeEnabled();
   });
 });

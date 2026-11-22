@@ -68,7 +68,7 @@ function ExistingPatient({ id }: { id: number }) {
     <>
       <PatientEditor key={data.id} patient={data} />
       <div className="max-w-3xl">
-        <MatchPanel patientId={data.id} />
+        <MatchPanel subject={{ kind: 'patient', id: data.id }} />
       </div>
     </>
   );

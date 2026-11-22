@@ -5,6 +5,8 @@ import { MatchCard } from './MatchPanel';
 
 const base: MatchResult = {
   id: 1,
+  patientId: 1,
+  pseudonym: 'P-0001',
   trialId: 7,
   decision: 'pending',
   note: null,
@@ -126,6 +128,21 @@ export const NotEligible: Story = {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(toggle);
     await expect(canvas.getByRole('table')).toBeInTheDocument();
+  },
+};
+
+/** Week 7: on a trial's page, the card is headed by the patient and links to them. */
+export const OnTrialPage: Story = {
+  args: { show: 'patient' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole('link', { name: 'P-0001' })).toHaveAttribute(
+      'href',
+      '/patients/1',
+    );
+    await expect(
+      canvas.queryByText('NCT99000001', { exact: false }),
+    ).toBeNull();
   },
 };
 

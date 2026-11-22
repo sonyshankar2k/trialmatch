@@ -184,7 +184,7 @@ describe('matching', () => {
     const events = new InMemoryMatchEvents();
     const seen: MatchRun[] = [];
     const runner = new MatchRunner(t.app.get(DB), flaky, events, {
-      maxTrials: 5,
+      maxCandidates: 5,
       stepDelayMs: 0,
     });
     const queue = new InlineMatchQueue(
