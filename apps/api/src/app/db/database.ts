@@ -14,6 +14,8 @@ import type { Env } from '../config';
 import * as schema from './schema';
 
 export type Db = NodePgDatabase<typeof schema>;
+/** A transaction handle, for writes that must commit together (Week 9: change + audit event). */
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export const DB = Symbol('DB');
 export const InjectDb = () => Inject(DB);
 

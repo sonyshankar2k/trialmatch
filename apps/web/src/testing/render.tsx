@@ -5,14 +5,20 @@ import { App, createQueryClient } from '../app/app';
 import { tokenStore } from '../lib/api';
 import { aliceAuth } from './fixtures';
 
-/** Renders the whole app at `path`, optionally signed in as Alice. */
+/** Renders the whole app at `path`, optionally signed in as Alice (Week 9: as an admin too). */
 export function renderApp(
   path: string,
-  { signedIn = true } = {},
+  { signedIn = true, admin = false } = {},
 ): RenderResult & { user: UserEvent } {
   if (signedIn) {
     tokenStore.set(aliceAuth.accessToken);
-    sessionStorage.setItem('trialmatch.user', JSON.stringify(aliceAuth.user));
+    sessionStorage.setItem(
+      'trialmatch.user',
+      JSON.stringify({
+        ...aliceAuth.user,
+        role: admin ? 'admin' : 'coordinator',
+      }),
+    );
   }
   const queryClient = createQueryClient();
   queryClient.setDefaultOptions({

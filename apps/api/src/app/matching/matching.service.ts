@@ -13,6 +13,8 @@ import type { z } from 'zod';
 import { InjectDb } from '../db/database';
 import type { Db } from '../db/database';
 import { matchResults, matchRuns, patients, trials } from '../db/schema';
+import { AuditService } from '../audit/audit.service';
+import { changesBetween } from '../audit/changes';
 import { MatchEvents } from './events';
 import { MatchQueue } from './queue';
 import { ELIGIBILITY_ORDER, toMatchResult, toMatchRun } from './runner';
@@ -35,6 +37,7 @@ export class MatchingService {
     @InjectDb() private readonly db: Db,
     private readonly queue: MatchQueue,
     private readonly events: MatchEvents,
+    private readonly audit: AuditService,
   ) {}
 
   async start(ownerId: number, patientId: number): Promise<MatchRun> {
@@ -42,7 +45,7 @@ export class MatchingService {
       where: and(eq(patients.id, patientId), eq(patients.ownerId, ownerId)),
     });
     if (!patient) throw new NotFoundException('Patient not found.');
-    return this.enqueue({ patientId, ownerId });
+    return this.enqueue({ patientId, ownerId }, patient.pseudonym);
   }
 
   /**
@@ -52,22 +55,35 @@ export class MatchingService {
   async startForTrial(ownerId: number, trialId: number): Promise<MatchRun> {
     const trial = await this.db.query.trials.findFirst({
       where: eq(trials.id, trialId),
-      columns: { status: true },
+      columns: { status: true, title: true },
     });
     if (!trial) throw new NotFoundException('Trial not found.');
     if (!(SCREENABLE_STATUSES as readonly string[]).includes(trial.status))
       throw new BadRequestException(
         'Only recruiting or not yet recruiting trials can be screened.',
       );
-    return this.enqueue({ trialId, ownerId });
+    return this.enqueue({ trialId, ownerId }, trial.title);
   }
 
   private async enqueue(
     subject: { ownerId: number } & (
       { patientId: number } | { trialId: number }
     ),
+    label: string,
   ): Promise<MatchRun> {
-    const [row] = await this.db.insert(matchRuns).values(subject).returning();
+    const row = await this.db.transaction(async (tx) => {
+      const [run] = await tx.insert(matchRuns).values(subject).returning();
+      await this.audit.record(tx, {
+        action: 'match.start',
+        entityType: 'match_run',
+        entityId: run.id,
+        label,
+        patientId: run.patientId,
+        trialId: run.trialId,
+        details: { kind: run.trialId !== null ? 'trial' : 'patient' },
+      });
+      return run;
+    });
     try {
       await this.queue.enqueue(row.id);
     } catch {
@@ -158,6 +174,9 @@ export class MatchingService {
       .select({
         patientId: matchResults.patientId,
         trialId: matchResults.trialId,
+        title: matchResults.title,
+        decision: matchResults.decision,
+        note: matchResults.note,
       })
       .from(matchResults)
       .innerJoin(matchRuns, eq(matchRuns.id, matchResults.runId))
@@ -197,6 +216,16 @@ export class MatchingService {
             ),
           );
       }
+      // Review notes are free text about a patient: recorded as changed, not quoted.
+      await this.audit.record(tx, {
+        action: 'match.review',
+        entityType: 'match_result',
+        entityId: resultId,
+        label: owned.title,
+        patientId: owned.patientId,
+        trialId: owned.trialId,
+        changes: changesBetween(owned, row, ['decision', 'note'], ['note']),
+      });
       return toMatchResult(row);
     });
   }
@@ -244,6 +273,17 @@ export class MatchingService {
     const run = shortlisted.reduce((a, b) =>
       b.run.createdAt > a.run.createdAt ? b : a,
     ).run;
+    // Week 9: a referral leaves TrialMatch, so who downloaded which one is recorded.
+    await this.audit.record(this.db, {
+      action: 'referral.download',
+      entityType: 'patient',
+      entityId: patientId,
+      label: patient.pseudonym,
+      patientId,
+      details: {
+        trials: shortlisted.map((r) => r.result.nctId ?? r.result.title),
+      },
+    });
     return {
       patient,
       run: toMatchRun(run, []),

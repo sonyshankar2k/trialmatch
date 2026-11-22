@@ -127,6 +127,8 @@ export function useResolveUpdate(trialId: number) {
       qc.setQueryData<PendingTrialUpdate>(registryKeys.update(trialId), {
         update: null,
       });
+      // Week 9: open History panels show the new event.
+      void qc.invalidateQueries({ queryKey: ['audit'] });
       void qc.invalidateQueries({ queryKey: ['trials', 'list'] });
     },
     // Someone else resolved it, or the registry changed again: show what is pending now.

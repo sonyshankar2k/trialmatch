@@ -87,6 +87,21 @@ export const EnvSchema = z.object({
    * "Check now" still works.
    */
   REGISTRY_SYNC_CRON: z.string().trim().default('0 6 * * *'),
+  // ---- Week 9: audit trail ----
+  /**
+   * Comma-separated emails of administrators, who can also read the audit
+   * log. A listed user becomes an admin when they sign up or sign in (removing
+   * an email does not demote anyone: change users.role for that).
+   */
+  ADMIN_EMAILS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    ),
   SEED_DEMO_DATA: z
     .enum(['true', 'false'])
     .default('true')

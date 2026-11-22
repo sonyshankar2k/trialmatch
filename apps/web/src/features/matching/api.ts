@@ -83,6 +83,8 @@ export function useReviewMatch(subject: MatchSubject) {
             ? null
             : { kind: 'patient', id: saved.patientId };
       if (other) void qc.invalidateQueries({ queryKey: matchKeys.runs(other) });
+      // Week 9: open History panels show the new event.
+      void qc.invalidateQueries({ queryKey: ['audit'] });
     },
   });
 }

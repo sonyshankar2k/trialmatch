@@ -62,7 +62,7 @@ export function useTestApp(): TestContext {
     await ctx.app
       .get(Pool)
       .query(
-        'TRUNCATE match_results, match_runs, trial_criteria, trials, patients, users RESTART IDENTITY CASCADE',
+        'TRUNCATE audit_events, match_results, match_runs, trial_criteria, trials, patients, users RESTART IDENTITY CASCADE',
       );
   });
 

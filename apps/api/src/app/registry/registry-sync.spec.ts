@@ -361,6 +361,27 @@ describe('registry sync (Week 8)', () => {
       'E1 Current smoker',
       'E2 Pregnancy',
     ]);
+    // Week 9: recorded as the registry Apply, with what it changed.
+    const history = (
+      await t
+        .http()
+        .get(`/api/trials/${trial.id}/history`)
+        .set(auth)
+        .expect(200)
+    ).body;
+    expect(history[0]).toMatchObject({
+      action: 'registry.apply',
+      details: { updateId: update.id, registryLastUpdated: '2026-04-01' },
+      changes: [
+        { field: 'status', from: 'recruiting', to: 'completed' },
+        { field: 'criteria' },
+      ],
+    });
+    expect(history.map((e: { action: string }) => e.action)).toEqual([
+      'registry.apply',
+      'trial.update',
+      'trial.import',
+    ]);
 
     // In step now: the next sync raises nothing, and the update is history.
     expect(await sync(auth)).toMatchObject({ updated: 0 });

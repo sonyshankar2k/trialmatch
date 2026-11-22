@@ -7,3 +7,4 @@ export * from './lib/trials.js';
 export * from './lib/patients.js';
 export * from './lib/matching.js';
 export * from './lib/registry.js';
+export * from './lib/audit.js';

@@ -11,8 +11,21 @@ import { FieldError, VersionConflict } from '../common/errors';
 import { InjectDb, pgErrorCode, PG_UNIQUE_VIOLATION } from '../db/database';
 import type { Db } from '../db/database';
 import { patients } from '../db/schema';
+import { AuditService } from '../audit/audit.service';
+import { changesBetween, createdWith } from '../audit/changes';
 
 type PatientRow = typeof patients.$inferSelect;
+
+/** Week 9: what the audit trail records of a patient. Notes are free text, so only "changed". */
+const AUDITED = [
+  'pseudonym',
+  'age',
+  'sex',
+  'conditions',
+  'medications',
+  'notes',
+] as const;
+const REDACTED = ['notes'] as const;
 
 const likePattern = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
@@ -22,7 +35,10 @@ const likePattern = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
  */
 @Injectable()
 export class PatientsService {
-  constructor(@InjectDb() private readonly db: Db) {}
+  constructor(
+    @InjectDb() private readonly db: Db,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(
     ownerId: number,
@@ -66,17 +82,40 @@ export class PatientsService {
     return toPatient(row);
   }
 
+  /** Week 9: opening a patient's record is recorded (who looked, and when). */
+  async view(ownerId: number, id: number): Promise<Patient> {
+    const patient = await this.get(ownerId, id);
+    await this.audit.record(this.db, {
+      action: 'patient.view',
+      entityType: 'patient',
+      entityId: id,
+      label: patient.pseudonym,
+      patientId: id,
+    });
+    return patient;
+  }
+
   async create(
     ownerId: number,
     input: z.output<typeof PatientCreateSchema>,
   ): Promise<Patient> {
-    return this.uniquePseudonym(async () => {
-      const [row] = await this.db
-        .insert(patients)
-        .values({ ...input, notes: input.notes ?? null, ownerId })
-        .returning();
-      return toPatient(row);
-    });
+    return this.uniquePseudonym(() =>
+      this.db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(patients)
+          .values({ ...input, notes: input.notes ?? null, ownerId })
+          .returning();
+        await this.audit.record(tx, {
+          action: 'patient.create',
+          entityType: 'patient',
+          entityId: row.id,
+          label: row.pseudonym,
+          patientId: row.id,
+          changes: createdWith(row, AUDITED, REDACTED),
+        });
+        return toPatient(row);
+      }),
+    );
   }
 
   async update(
@@ -85,14 +124,43 @@ export class PatientsService {
     input: z.output<typeof PatientUpdateSchema>,
   ): Promise<Patient> {
     const { version, ...fields } = input;
-    const [row] = await this.uniquePseudonym(() =>
-      this.db
-        .update(patients)
-        .set({
-          ...fields,
-          version: sql`${patients.version} + 1`,
-          updatedAt: new Date(),
-        })
+    const row = await this.uniquePseudonym(() =>
+      this.db.transaction(async (tx) => {
+        const [before] = await tx
+          .select()
+          .from(patients)
+          .where(and(eq(patients.id, id), eq(patients.ownerId, ownerId)))
+          .for('update');
+        if (!before || before.version !== version) return null;
+        const [after] = await tx
+          .update(patients)
+          .set({
+            ...fields,
+            version: sql`${patients.version} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(patients.id, id))
+          .returning();
+        await this.audit.record(tx, {
+          action: 'patient.update',
+          entityType: 'patient',
+          entityId: id,
+          label: after.pseudonym,
+          patientId: id,
+          changes: changesBetween(before, after, AUDITED, REDACTED),
+          details: { version: after.version },
+        });
+        return after;
+      }),
+    );
+    if (row) return toPatient(row);
+    throw new VersionConflict(await this.get(ownerId, id));
+  }
+
+  async remove(ownerId: number, id: number, version: number): Promise<void> {
+    const deleted = await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .delete(patients)
         .where(
           and(
             eq(patients.id, id),
@@ -100,24 +168,18 @@ export class PatientsService {
             eq(patients.version, version),
           ),
         )
-        .returning(),
-    );
-    if (row) return toPatient(row);
-    throw new VersionConflict(await this.get(ownerId, id));
-  }
-
-  async remove(ownerId: number, id: number, version: number): Promise<void> {
-    const deleted = await this.db
-      .delete(patients)
-      .where(
-        and(
-          eq(patients.id, id),
-          eq(patients.ownerId, ownerId),
-          eq(patients.version, version),
-        ),
-      )
-      .returning({ id: patients.id });
-    if (!deleted.length) throw new VersionConflict(await this.get(ownerId, id));
+        .returning({ id: patients.id, pseudonym: patients.pseudonym });
+      if (row)
+        await this.audit.record(tx, {
+          action: 'patient.delete',
+          entityType: 'patient',
+          entityId: id,
+          label: row.pseudonym,
+          patientId: id,
+        });
+      return row;
+    });
+    if (!deleted) throw new VersionConflict(await this.get(ownerId, id));
   }
 
   private async uniquePseudonym<T>(work: () => Promise<T>): Promise<T> {

@@ -4,6 +4,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  bigserial,
   boolean,
   check,
   date,
@@ -29,6 +30,8 @@ import {
   TRIAL_SOURCES,
   TRIAL_STATUSES,
   TRIAL_UPDATE_STATUSES,
+  USER_ROLES,
+  type AuditChange,
   type CriteriaChange,
   type CriterionAssessment,
   type FieldChange,
@@ -43,6 +46,7 @@ export const trialSex = pgEnum('trial_sex', SEXES);
 export const trialSource = pgEnum('trial_source', TRIAL_SOURCES);
 export const criterionType = pgEnum('criterion_type', CRITERION_TYPES);
 export const patientSex = pgEnum('patient_sex', ['female', 'male']);
+export const userRole = pgEnum('user_role', USER_ROLES);
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true })
@@ -60,6 +64,8 @@ export const users = pgTable(
     email: varchar('email', { length: 254 }).notNull(),
     displayName: varchar('display_name', { length: 100 }).notNull(),
     passwordHash: text('password_hash').notNull(),
+    /** Week 9: admins can also read the audit log (ADMIN_EMAILS promotes at sign-in). */
+    role: userRole('role').notNull().default('coordinator'),
     createdAt: timestamps.createdAt,
   },
   (t) => [uniqueIndex('users_email_key').on(t.email)],
@@ -292,5 +298,41 @@ export const trialUpdates = pgTable(
       .on(t.trialId)
       .where(sql`${t.status} = 'pending'`),
     index('trial_updates_trial_idx').on(t.trialId, t.detectedAt),
+  ],
+);
+
+/**
+ * Week 9: the audit trail, append-only. A trigger (migration 0008) rejects
+ * UPDATE and DELETE, so no application bug can rewrite history. There are no
+ * foreign keys: events outlive the records they describe, and `label` and
+ * `actorName` keep what those were called at the time.
+ */
+export const auditEvents = pgTable(
+  'audit_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    actorId: integer('actor_id'),
+    actorName: varchar('actor_name', { length: 100 }),
+    action: varchar('action', { length: 40 }).notNull(),
+    entityType: varchar('entity_type', { length: 20 }).notNull(),
+    entityId: integer('entity_id'),
+    label: varchar('label', { length: 300 }),
+    patientId: integer('patient_id'),
+    trialId: integer('trial_id'),
+    changes: jsonb('changes').$type<AuditChange[]>().notNull().default([]),
+    details: jsonb('details')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    requestId: varchar('request_id', { length: 100 }),
+    ip: varchar('ip', { length: 64 }),
+  },
+  (t) => [
+    index('audit_events_at_idx').on(t.at),
+    index('audit_events_patient_idx').on(t.patientId, t.at),
+    index('audit_events_trial_idx').on(t.trialId, t.at),
+    index('audit_events_actor_idx').on(t.actorId, t.at),
+    index('audit_events_entity_idx').on(t.entityType, t.entityId),
   ],
 );

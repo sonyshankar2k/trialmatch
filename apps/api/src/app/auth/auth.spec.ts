@@ -23,6 +23,7 @@ describe('auth', () => {
       id: 1,
       email: 'alice@example.com',
       displayName: 'Alice',
+      role: 'coordinator',
     });
     expect(login.body).not.toHaveProperty('user.passwordHash');
 

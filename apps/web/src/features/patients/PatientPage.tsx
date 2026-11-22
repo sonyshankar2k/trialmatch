@@ -8,6 +8,7 @@ import {
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router';
+import { HistoryPanel } from '../audit/HistoryPanel';
 import { MatchPanel } from '../matching/MatchPanel';
 import { ConflictBanner } from '../../components/ConflictBanner';
 import { Field, fieldProps } from '../../components/Field';
@@ -69,6 +70,7 @@ function ExistingPatient({ id }: { id: number }) {
       <PatientEditor key={data.id} patient={data} />
       <div className="max-w-3xl">
         <MatchPanel subject={{ kind: 'patient', id: data.id }} />
+        <HistoryPanel subject={{ kind: 'patient', id: data.id }} />
       </div>
     </>
   );

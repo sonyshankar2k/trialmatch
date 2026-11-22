@@ -17,6 +17,8 @@ services:
         generateValue: true
       - key: ANTHROPIC_API_KEY # optional: without it the rule-based engine runs
         sync: false
+      - key: ADMIN_EMAILS # Week 9: who can read the audit log (comma-separated)
+        sync: false
       - key: SEED_DEMO_DATA
         value: 'true'
       - key: TRUST_PROXY # Render's load balancer sits in front of the app
