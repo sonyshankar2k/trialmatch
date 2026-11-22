@@ -6,6 +6,7 @@ import {
   type Eligibility,
   type MatchResult,
   type MatchReviewInput,
+  type MatchRun,
 } from '@trialmatch/shared';
 import { useId, useState } from 'react';
 import { Link } from 'react-router';
@@ -56,7 +57,14 @@ const copy = {
  * Start a run, watch it live, review the results: "Find matching trials" on a
  * patient, or "Find eligible patients" on a trial (Week 7).
  */
-export function MatchPanel({ subject }: { subject: MatchSubject }) {
+export function MatchPanel({
+  subject,
+  trial,
+}: {
+  subject: MatchSubject;
+  /** Week 8, on a trial: its current version; results that screened an older one are flagged. */
+  trial?: { version: number; updatedAt: string };
+}) {
   const runs = useMatchRuns(subject);
   const start = useStartMatch(subject);
   const latest = runs.data?.[0];
@@ -130,6 +138,12 @@ export function MatchPanel({ subject }: { subject: MatchSubject }) {
               {new Date(latest.finishedAt ?? latest.createdAt).toLocaleString()}
             </span>
           </p>
+          {trial && screenedOlder(latest, trial) && (
+            <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              This trial changed after this screening. Screen again so the
+              results use its current criteria.
+            </p>
+          )}
           {latest.results.length > 0 &&
             (subject.kind === 'patient' ? (
               <ReferralBar patientId={subject.id} shortlisted={shortlisted} />
@@ -443,4 +457,16 @@ function ReviewControls({
       )}
     </div>
   );
+}
+
+/**
+ * Week 8: the run screened an earlier version of the trial. Runs record the
+ * version the worker loaded; runs from before that fall back to dates.
+ */
+function screenedOlder(
+  run: MatchRun,
+  trial: { version: number; updatedAt: string },
+): boolean {
+  if (run.trialVersion !== null) return run.trialVersion < trial.version;
+  return new Date(run.createdAt) < new Date(trial.updatedAt);
 }

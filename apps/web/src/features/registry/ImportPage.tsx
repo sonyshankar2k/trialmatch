@@ -6,7 +6,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ApiRequestError, errorMessage } from '../../lib/api';
-import { useImportStudy, useRegistryPreview, useRegistrySearch } from './api';
+import {
+  useImportStudy,
+  useRegistryPreview,
+  useRegistrySearch,
+  useSyncRegistry,
+} from './api';
 import { ageRange, StudyPreview } from './StudyPreview';
 
 type SearchStatus = (typeof REGISTRY_SEARCH_STATUSES)[number];
@@ -121,6 +126,7 @@ export function ImportPage() {
         how it will look in TrialMatch, including its eligibility criteria, then
         import it to match your patients against it.
       </p>
+      <SyncAll />
 
       <form
         onSubmit={onSearch}
@@ -301,5 +307,41 @@ export function ImportPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+/** Week 8: check every imported trial against the registry now (it also runs daily). */
+function SyncAll() {
+  const sync = useSyncRegistry();
+  const r = sync.data;
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-slate-600">
+      <span>Imported trials are checked for registry changes every day.</span>
+      <button
+        type="button"
+        className="btn-secondary px-2.5 py-1 text-xs"
+        disabled={sync.isPending}
+        onClick={() => sync.mutate()}
+      >
+        {sync.isPending ? 'Checking…' : 'Check imported trials now'}
+      </button>
+      {r && (
+        <span role="status">
+          Checked {r.checked} {r.checked === 1 ? 'trial' : 'trials'}:{' '}
+          {r.updated === 0
+            ? r.failed.length === 0
+              ? 'all in step.'
+              : 'no updates detected among successfully checked trials.'
+            : `${r.updated} with ${r.updated === 1 ? 'an update' : 'updates'} to review (marked in the trials list).`}
+          {r.failed.length > 0 &&
+            ` Couldn’t check ${r.failed.join(', ')}; try again later.`}
+        </span>
+      )}
+      {sync.isError && (
+        <span role="alert" className="text-red-700">
+          {errorMessage(sync.error)}
+        </span>
+      )}
+    </div>
   );
 }

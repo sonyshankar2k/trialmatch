@@ -121,6 +121,11 @@ export function TrialsPage() {
                       >
                         {t.title}
                       </Link>
+                      {t.pendingUpdateId !== null && (
+                        <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium whitespace-nowrap text-amber-800 ring-1 ring-amber-600/20 ring-inset">
+                          Registry update
+                        </span>
+                      )}
                       <div className="text-xs text-slate-500">
                         {t.nctId ?? 'No NCT ID yet'}
                         {t.sponsor && ` · ${t.sponsor}`}

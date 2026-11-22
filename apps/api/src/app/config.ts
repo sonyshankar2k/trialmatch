@@ -79,6 +79,14 @@ export const EnvSchema = z.object({
     .min(500)
     .max(60_000)
     .default(10_000),
+  // ---- Week 8: keeping imported trials in sync ----
+  /**
+   * When imported trials are checked against ClinicalTrials.gov (cron, server
+   * time; BullMQ runs it once across replicas when REDIS_URL is set). Without
+   * Redis, the check runs every 24 hours in this process. "off" disables it;
+   * "Check now" still works.
+   */
+  REGISTRY_SYNC_CRON: z.string().trim().default('0 6 * * *'),
   SEED_DEMO_DATA: z
     .enum(['true', 'false'])
     .default('true')

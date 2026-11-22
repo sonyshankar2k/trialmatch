@@ -58,6 +58,8 @@ type Review = Pick<ResultRow, 'decision' | 'note' | 'decidedAt' | 'reviewedAt'>;
 /** What differs between a patient run and a trial run (Week 7). */
 interface Job {
   ownerId: number;
+  /** Trial runs: the version of the trial being screened. */
+  trialVersion: number | null;
   finding: string;
   find: () => Promise<Pair[]>;
   /** What "Checking …" names for each pair. */
@@ -107,6 +109,7 @@ export class MatchRunner {
         attempts: attempt,
         error: null,
         engine: this.engine.name,
+        trialVersion: job.trialVersion,
         progress: 5,
         stage: job.finding,
       });
@@ -192,15 +195,16 @@ export class MatchRunner {
 
   private async job(run: RunRow): Promise<Job | null> {
     if (run.trialId !== null) {
-      const [trial] = await this.withCriteria(
-        await this.db
-          .select(trialColumns)
-          .from(trials)
-          .where(eq(trials.id, run.trialId)),
-      );
-      if (!trial) return null;
+      const [row] = await this.db
+        .select({ ...trialColumns, version: trials.version })
+        .from(trials)
+        .where(eq(trials.id, run.trialId));
+      if (!row) return null;
+      const { version, ...columns } = row;
+      const [trial] = await this.withCriteria([columns]);
       return {
         ownerId: run.ownerId,
+        trialVersion: version,
         finding: 'Finding candidate patients',
         find: async () =>
           (await this.findCandidatePatients(trial, run.ownerId)).map(
@@ -219,6 +223,7 @@ export class MatchRunner {
     const patient = toPatient(row);
     return {
       ownerId: run.ownerId,
+      trialVersion: null,
       finding: 'Finding candidate trials',
       find: async () =>
         (await this.findCandidates(patient)).map((trial) => ({
@@ -445,6 +450,7 @@ export function toMatchRun(row: RunRow, results: ResultRow[]): MatchRun {
     kind: row.trialId !== null ? 'trial' : 'patient',
     patientId: row.patientId,
     trialId: row.trialId,
+    trialVersion: row.trialVersion,
     status: row.status,
     progress: row.progress,
     stage: row.stage,

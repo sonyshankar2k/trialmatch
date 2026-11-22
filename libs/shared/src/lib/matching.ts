@@ -122,6 +122,12 @@ export interface MatchRun {
   patientId: number | null;
   /** Set for trial runs. */
   trialId: number | null;
+  /**
+   * Week 8, trial runs: the trial version that was screened, so results can be
+   * flagged once the trial changes. Null before the worker starts, and for
+   * runs from before Week 8.
+   */
+  trialVersion: number | null;
   status: MatchRunStatus;
   progress: number;
   stage: string;

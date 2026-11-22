@@ -1,0 +1,1 @@
+ALTER TABLE "match_runs" ADD COLUMN "trial_version" integer;

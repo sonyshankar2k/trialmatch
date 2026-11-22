@@ -96,3 +96,121 @@ export interface RegistryPreview {
   warnings: string[];
   importedTrialId: number | null;
 }
+
+// ------------------------------------------------- Week 8: keeping imports in sync
+
+/**
+ * Imported trials are checked against ClinicalTrials.gov (daily, and on demand).
+ * When the registry's version differs from what TrialMatch last took from it, a
+ * pending update lists the differences; a person applies it or keeps the trial
+ * as it is. Local edits are never overwritten without that choice.
+ */
+export const SYNCED_FIELDS = [
+  'title',
+  'condition',
+  'phase',
+  'status',
+  'sponsor',
+  'summary',
+  'minAge',
+  'maxAge',
+  'sex',
+] as const;
+export type SyncedField = (typeof SYNCED_FIELDS)[number];
+
+export const SYNCED_FIELD_LABELS: Record<SyncedField, string> = {
+  title: 'Title',
+  condition: 'Condition',
+  phase: 'Phase',
+  status: 'Status',
+  sponsor: 'Sponsor',
+  summary: 'Summary',
+  minAge: 'Minimum age',
+  maxAge: 'Maximum age',
+  sex: 'Sex',
+};
+
+/** One field the registry changed: what TrialMatch has, and what the registry says now. */
+export interface FieldChange {
+  field: SyncedField;
+  current: string | number | null;
+  registry: string | number | null;
+}
+
+/**
+ * A criterion the registry no longer lists. `inTrial` is false when TrialMatch
+ * does not have it as written (reworded or already removed here): Apply cannot
+ * remove it, so the person checks their version and confirms (`reconciled`).
+ */
+export interface RemovedCriterion extends CriterionInput {
+  inTrial: boolean;
+}
+
+/** Criteria compared by type and wording: new on the registry, or no longer there. */
+export interface CriteriaChange {
+  added: CriterionInput[];
+  removed: RemovedCriterion[];
+}
+
+export const TRIAL_UPDATE_STATUSES = [
+  'pending',
+  'applied',
+  'dismissed',
+] as const;
+export type TrialUpdateStatus = (typeof TRIAL_UPDATE_STATUSES)[number];
+
+export interface TrialUpdate {
+  id: number;
+  /**
+   * Goes up each time a newer registry change replaces this pending update.
+   * Apply and Keep send the revision the person reviewed: 409 if it moved on.
+   */
+  revision: number;
+  trialId: number;
+  nctId: string;
+  /** The registry record's last update date (YYYY-MM-DD). */
+  registryLastUpdated: string | null;
+  /**
+   * While pending, `fields` and `criteria` compare the registry with the trial
+   * as it is now, at this version; Apply sends it, so what is applied is what
+   * was shown (409 after any save).
+   */
+  trialVersion: number;
+  fields: FieldChange[];
+  criteria: CriteriaChange;
+  /** Things the conversion had to interpret, as on import. */
+  warnings: string[];
+  status: TrialUpdateStatus;
+  detectedAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+}
+
+/** A trial's pending update (null when the trial is in step with the registry). */
+export interface PendingTrialUpdate {
+  update: TrialUpdate | null;
+}
+
+/** Keeping the current version names the revision of the update the person reviewed. */
+export const TrialUpdateDismissSchema = z.object({
+  revision: z.number().int().min(1),
+});
+export type TrialUpdateDismissInput = z.input<typeof TrialUpdateDismissSchema>;
+
+/** Applying also edits the trial, so it carries the trial version read as well. */
+export const TrialUpdateApplySchema = TrialUpdateDismissSchema.extend({
+  version: z.number().int().min(1),
+  /** The person checked the removed criteria TrialMatch has reworded (`inTrial: false`). */
+  reconciled: z.boolean().optional(),
+});
+export type TrialUpdateApplyInput = z.input<typeof TrialUpdateApplySchema>;
+
+export interface RegistrySyncResult {
+  /** Imported trials looked at. */
+  checked: number;
+  /** Trials with a pending update after this check. */
+  updated: number;
+  /** NCT IDs the registry could not be asked about (or no longer lists). */
+  failed: string[];
+  checkedAt: string;
+}
