@@ -56,7 +56,14 @@ const copy = {
  * Start a run, watch it live, review the results: "Find matching trials" on a
  * patient, or "Find eligible patients" on a trial (Week 7).
  */
-export function MatchPanel({ subject }: { subject: MatchSubject }) {
+export function MatchPanel({
+  subject,
+  changedAt,
+}: {
+  subject: MatchSubject;
+  /** Week 8: when the trial last changed; older results are flagged as out of date. */
+  changedAt?: string;
+}) {
   const runs = useMatchRuns(subject);
   const start = useStartMatch(subject);
   const latest = runs.data?.[0];
@@ -130,6 +137,12 @@ export function MatchPanel({ subject }: { subject: MatchSubject }) {
               {new Date(latest.finishedAt ?? latest.createdAt).toLocaleString()}
             </span>
           </p>
+          {changedAt && new Date(latest.createdAt) < new Date(changedAt) && (
+            <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              This trial changed after this screening. Screen again so the
+              results use its current criteria.
+            </p>
+          )}
           {latest.results.length > 0 &&
             (subject.kind === 'patient' ? (
               <ReferralBar patientId={subject.id} shortlisted={shortlisted} />

@@ -28,7 +28,11 @@ import {
   TRIAL_PHASES,
   TRIAL_SOURCES,
   TRIAL_STATUSES,
+  TRIAL_UPDATE_STATUSES,
+  type CriteriaChange,
   type CriterionAssessment,
+  type FieldChange,
+  type RegistryTrialInput,
 } from '@trialmatch/shared';
 
 const tsvector = customType<{ data: string }>({ dataType: () => 'tsvector' });
@@ -79,6 +83,13 @@ export const trials = pgTable(
     source: trialSource('source').notNull().default('manual'),
     /** For imported trials: the registry record's last update date. */
     sourceLastUpdated: date('source_last_updated', { mode: 'string' }),
+    /**
+     * Week 8: the registry's version as TrialMatch last took it (on import, or
+     * when an update was applied or kept). A sync compares the registry with
+     * this, not with the trial, so local edits never look like registry changes.
+     */
+    sourceSnapshot: jsonb('source_snapshot').$type<RegistryTrialInput>(),
+    sourceCheckedAt: timestamp('source_checked_at', { withTimezone: true }),
     version: integer('version').notNull().default(1),
     createdById: integer('created_by_id')
       .notNull()
@@ -231,5 +242,47 @@ export const matchResults = pgTable(
   (t) => [
     index('match_results_run_idx').on(t.runId, t.rank),
     index('match_results_pair_idx').on(t.patientId, t.trialId),
+  ],
+);
+
+// ----------------------------------------------------------- Week 8: registry sync
+
+export const trialUpdateStatus = pgEnum(
+  'trial_update_status',
+  TRIAL_UPDATE_STATUSES,
+);
+
+/**
+ * A difference between an imported trial and ClinicalTrials.gov. At most one is
+ * pending per trial (a newer registry change replaces it); applied and kept
+ * ones stay as history.
+ */
+export const trialUpdates = pgTable(
+  'trial_updates',
+  {
+    id: serial('id').primaryKey(),
+    trialId: integer('trial_id')
+      .notNull()
+      .references(() => trials.id, { onDelete: 'cascade' }),
+    registryLastUpdated: date('registry_last_updated', { mode: 'string' }),
+    fields: jsonb('fields').$type<FieldChange[]>().notNull(),
+    criteria: jsonb('criteria').$type<CriteriaChange>().notNull(),
+    /** The registry's version, which becomes the trial's snapshot once resolved. */
+    snapshot: jsonb('snapshot').$type<RegistryTrialInput>().notNull(),
+    warnings: jsonb('warnings').$type<string[]>().notNull(),
+    status: trialUpdateStatus('status').notNull().default('pending'),
+    detectedAt: timestamp('detected_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedById: integer('resolved_by_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+  },
+  (t) => [
+    uniqueIndex('trial_updates_one_pending')
+      .on(t.trialId)
+      .where(sql`${t.status} = 'pending'`),
+    index('trial_updates_trial_idx').on(t.trialId, t.detectedAt),
   ],
 );

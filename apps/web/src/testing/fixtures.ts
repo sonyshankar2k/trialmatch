@@ -30,6 +30,8 @@ export function makeTrial(overrides: Partial<Trial> = {}): Trial {
     ],
     source: 'manual',
     sourceLastUpdated: null,
+    sourceCheckedAt: null,
+    pendingUpdateId: null,
     version: 3,
     createdBy: 'Alice Chen',
     createdAt: '2026-10-01T10:00:00.000Z',

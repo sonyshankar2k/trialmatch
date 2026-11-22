@@ -69,6 +69,9 @@ export class RegistryService {
       return await this.trials.create(input, userId, {
         source: 'clinicaltrials_gov',
         sourceLastUpdated: lastUpdated,
+        // Week 8: what later registry checks compare against.
+        sourceSnapshot: trial,
+        sourceCheckedAt: new Date(),
       });
     } catch (err) {
       // Two people importing the same study at once: the unique NCT ID decides.

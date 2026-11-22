@@ -91,9 +91,40 @@ export class CtgovClient {
     }
   }
 
-  async getStudy(nctId: string): Promise<CtgovStudy> {
+  /**
+   * Week 8: the last update date of each study, in pages of up to 100 NCT IDs
+   * (one request per page, only the two fields needed). Studies the registry
+   * no longer lists are missing from the map.
+   */
+  async lastUpdated(nctIds: string[]): Promise<Map<string, string | null>> {
+    const dates = new Map<string, string | null>();
+    for (let i = 0; i < nctIds.length; i += 100) {
+      const ids = nctIds.slice(i, i + 100);
+      const page = await this.getJson<{ studies?: CtgovStudy[] }>('/studies', {
+        'filter.ids': ids.join(','),
+        fields: 'NCTId,LastUpdatePostDate',
+        pageSize: String(ids.length),
+      });
+      for (const s of page.studies ?? []) {
+        const id = s.protocolSection?.identificationModule?.nctId;
+        if (id)
+          dates.set(
+            id,
+            s.protocolSection?.statusModule?.lastUpdatePostDateStruct?.date ??
+              null,
+          );
+      }
+    }
+    return dates;
+  }
+
+  /** `fresh`: skip the cache (a sync must see the record as it is now). */
+  async getStudy(
+    nctId: string,
+    { fresh = false }: { fresh?: boolean } = {},
+  ): Promise<CtgovStudy> {
     const cached = this.cache.get(nctId);
-    if (cached && cached.expires > Date.now()) return cached.study;
+    if (!fresh && cached && cached.expires > Date.now()) return cached.study;
     const study = await this.getJson<CtgovStudy>(
       `/studies/${nctId}`,
       {},

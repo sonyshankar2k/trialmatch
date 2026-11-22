@@ -5,9 +5,11 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import type {
+  PendingTrialUpdate,
   RegistryPreview,
   RegistrySearchQuery,
   RegistrySearchResult,
+  RegistrySyncResult,
   Trial,
 } from '@trialmatch/shared';
 import { api } from '../../lib/api';
@@ -17,6 +19,7 @@ export const registryKeys = {
   search: (q: Omit<RegistrySearchQuery, 'pageToken'>) =>
     ['registry', 'search', q] as const,
   preview: (nctId: string) => ['registry', 'preview', nctId] as const,
+  update: (trialId: number) => ['registry', 'update', trialId] as const,
 };
 
 /** Search ClinicalTrials.gov. "Load more" fetches the next page with the registry's page token. */
@@ -55,6 +58,81 @@ export function useImportStudy() {
       qc.invalidateQueries({ queryKey: ['trials', 'list'] });
       // Search results and previews now point at the new trial.
       qc.invalidateQueries({ queryKey: ['registry'] });
+    },
+  });
+}
+
+// ------------------------------------------------- Week 8: keeping imports in sync
+
+/** The trial's pending registry update (`update` is null when it is in step). */
+export function useTrialUpdate(trialId: number, enabled: boolean) {
+  return useQuery({
+    queryKey: registryKeys.update(trialId),
+    queryFn: () =>
+      api<PendingTrialUpdate>(`/registry/trials/${trialId}/update`),
+    enabled,
+  });
+}
+
+/** Check this trial against ClinicalTrials.gov now. */
+export function useCheckTrial(trialId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api<PendingTrialUpdate>(`/registry/trials/${trialId}/check`, {
+        method: 'POST',
+      }),
+    onSuccess: (result) => {
+      qc.setQueryData(registryKeys.update(trialId), result);
+      // "Last checked" and the pending flag live on the trial.
+      void qc.invalidateQueries({ queryKey: trialKeys.detail(trialId) });
+      void qc.invalidateQueries({ queryKey: ['trials', 'list'] });
+    },
+  });
+}
+
+/** Apply the update (with the trial version read) or keep the trial as it is. */
+export function useResolveUpdate(trialId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      action:
+        | { kind: 'apply'; id: number; version: number }
+        | {
+            kind: 'dismiss';
+            id: number;
+          },
+    ) =>
+      action.kind === 'apply'
+        ? api<Trial>(`/registry/updates/${action.id}/apply`, {
+            method: 'POST',
+            body: { version: action.version },
+          })
+        : api<Trial>(`/registry/updates/${action.id}/dismiss`, {
+            method: 'POST',
+          }),
+    onSuccess: (trial) => {
+      qc.setQueryData(trialKeys.detail(trial.id), trial);
+      qc.setQueryData<PendingTrialUpdate>(registryKeys.update(trialId), {
+        update: null,
+      });
+      void qc.invalidateQueries({ queryKey: ['trials', 'list'] });
+    },
+    // Someone else may have resolved it: show what is pending now.
+    onError: () =>
+      void qc.invalidateQueries({ queryKey: registryKeys.update(trialId) }),
+  });
+}
+
+/** Check every imported trial now. */
+export function useSyncRegistry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api<RegistrySyncResult>('/registry/sync', { method: 'POST' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: trialKeys.all });
+      void qc.invalidateQueries({ queryKey: ['registry', 'update'] });
     },
   });
 }

@@ -5,6 +5,16 @@ import { renderApp } from '../../testing/render';
 import { server } from '../../testing/server';
 
 describe('ImportPage', () => {
+  // Opening an imported trial also loads its screening runs and registry update.
+  beforeEach(() =>
+    server.use(
+      http.get('*/api/trials/:id/match-runs', () => HttpResponse.json([])),
+      http.get('*/api/registry/trials/:id/update', () =>
+        HttpResponse.json({ update: null }),
+      ),
+    ),
+  );
+
   it('searches, previews and imports a study', async () => {
     const searches: URLSearchParams[] = [];
     const imports: unknown[] = [];
@@ -221,6 +231,30 @@ describe('ImportPage', () => {
       await screen.findByRole('heading', {
         name: 'Import from ClinicalTrials.gov',
       }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('checking imported trials (Week 8)', () => {
+  it('checks every imported trial now and reports the result', async () => {
+    server.use(
+      http.post('*/api/registry/sync', () =>
+        HttpResponse.json({
+          checked: 3,
+          updated: 1,
+          failed: ['NCT90000009'],
+          checkedAt: '2026-11-21T10:00:00.000Z',
+        }),
+      ),
+    );
+    const { user } = renderApp('/trials/import');
+    await user.click(
+      await screen.findByRole('button', { name: 'Check imported trials now' }),
+    );
+    expect(
+      await screen.findByText(
+        'Checked 3 trials: 1 with an update to review (marked in the trials list). Couldn’t check NCT90000009; try again later.',
+      ),
     ).toBeInTheDocument();
   });
 });

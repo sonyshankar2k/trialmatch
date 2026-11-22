@@ -6,6 +6,7 @@ import { ConflictBanner } from '../../components/ConflictBanner';
 import { ApiRequestError, errorMessage } from '../../lib/api';
 import { formatDate } from '../../lib/dates';
 import { MatchPanel } from '../matching/MatchPanel';
+import { RegistrySync } from '../registry/RegistryUpdate';
 import { changedFields } from '../../lib/diff';
 import { applyServerErrors } from '../../lib/forms';
 import { trialKeys, trialQuery, useDeleteTrial, useSaveTrial } from './api';
@@ -218,10 +219,28 @@ function TrialEditor({ trial }: { trial?: Trial }) {
             </a>
           </p>
         )}
+        {base?.source === 'clinicaltrials_gov' && base.nctId && (
+          <RegistrySync
+            trial={base}
+            unsavedChanges={form.formState.isDirty}
+            onTrialChanged={(next, note) => {
+              qc.setQueryData(trialKeys.detail(next.id), next);
+              setBase(next);
+              setConflict(null);
+              form.reset(toFormValues(next));
+              setMessage(note);
+            }}
+          />
+        )}
         <TrialFormFields form={form} />
       </form>
       {/* Week 7: outside the form, so its buttons never submit the trial. */}
-      {base && <MatchPanel subject={{ kind: 'trial', id: base.id }} />}
+      {base && (
+        <MatchPanel
+          subject={{ kind: 'trial', id: base.id }}
+          changedAt={base.updatedAt}
+        />
+      )}
     </>
   );
 }

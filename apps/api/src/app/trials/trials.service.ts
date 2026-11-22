@@ -32,9 +32,21 @@ import {
   PG_UNIQUE_VIOLATION,
 } from '../db/database';
 import type { Db } from '../db/database';
-import { trialCriteria, trials, users } from '../db/schema';
+import { trialCriteria, trials, trialUpdates, users } from '../db/schema';
 
 type TrialRow = typeof trials.$inferSelect;
+/** Week 8: provenance columns set by the registry import and sync, never by the form. */
+export type TrialProvenance = Partial<
+  Pick<
+    typeof trials.$inferInsert,
+    'source' | 'sourceLastUpdated' | 'sourceSnapshot' | 'sourceCheckedAt'
+  >
+>;
+
+/** Week 8: the id of the trial's pending registry update, if any. */
+const pendingUpdateId = sql<
+  number | null
+>`(select ${trialUpdates.id} from ${trialUpdates} where ${trialUpdates.trialId} = ${trials.id} and ${trialUpdates.status} = 'pending')`;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /** `%` and `_` typed by a user are literal characters, not wildcards. */
@@ -66,7 +78,12 @@ export class TrialsService {
     const criteriaCount = sql<number>`(select count(*)::int from ${trialCriteria} where ${trialCriteria.trialId} = ${trials.id})`;
     const [rows, [{ total }]] = await Promise.all([
       this.db
-        .select({ trial: trials, createdBy: users.displayName, criteriaCount })
+        .select({
+          trial: trials,
+          createdBy: users.displayName,
+          criteriaCount,
+          pendingUpdateId,
+        })
         .from(trials)
         .innerJoin(users, eq(users.id, trials.createdById))
         .where(where)
@@ -77,8 +94,11 @@ export class TrialsService {
     ]);
 
     return {
-      items: rows.map(({ trial, createdBy, criteriaCount }) =>
-        toSummary(toTrial(trial, createdBy, []), criteriaCount),
+      items: rows.map(({ trial, createdBy, criteriaCount, pendingUpdateId }) =>
+        toSummary(
+          toTrial(trial, createdBy, [], pendingUpdateId),
+          criteriaCount,
+        ),
       ),
       total,
       page: query.page,
@@ -98,7 +118,11 @@ export class TrialsService {
 
   async get(id: number, db: Db | Tx = this.db): Promise<Trial> {
     const [row] = await db
-      .select({ trial: trials, createdBy: users.displayName })
+      .select({
+        trial: trials,
+        createdBy: users.displayName,
+        pendingUpdateId,
+      })
       .from(trials)
       .innerJoin(users, eq(users.id, trials.createdById))
       .where(eq(trials.id, id));
@@ -108,16 +132,13 @@ export class TrialsService {
       .from(trialCriteria)
       .where(eq(trialCriteria.trialId, id))
       .orderBy(asc(trialCriteria.type), asc(trialCriteria.ordinal));
-    return toTrial(row.trial, row.createdBy, criteria);
+    return toTrial(row.trial, row.createdBy, criteria, row.pendingUpdateId);
   }
 
   async create(
     input: z.output<typeof TrialCreateSchema>,
     userId: number,
-    provenance: Pick<Trial, 'source' | 'sourceLastUpdated'> = {
-      source: 'manual',
-      sourceLastUpdated: null,
-    },
+    provenance: TrialProvenance = { source: 'manual' },
   ): Promise<Trial> {
     const { criteria, ...fields } = input;
     return this.uniqueNct(() =>
@@ -140,10 +161,12 @@ export class TrialsService {
   /**
    * Optimistic concurrency: the UPDATE only matches the version the client read.
    * If someone saved in between, nothing changes and the client gets 409 + the current record.
+   * Week 8: applying a registry update also sets the provenance in the same save.
    */
   async update(
     id: number,
     input: z.output<typeof TrialUpdateSchema>,
+    provenance: TrialProvenance = {},
   ): Promise<Trial> {
     const { version, criteria, ...fields } = input;
     const result = await this.uniqueNct(() =>
@@ -152,6 +175,7 @@ export class TrialsService {
           .update(trials)
           .set({
             ...fields,
+            ...provenance,
             version: sql`${trials.version} + 1`,
             updatedAt: new Date(),
           })
@@ -215,6 +239,7 @@ function toTrial(
   t: TrialRow,
   createdBy: string,
   criteria: (typeof trialCriteria.$inferSelect)[],
+  pendingUpdateId: number | null = null,
 ): Trial {
   return {
     id: t.id,
@@ -230,6 +255,8 @@ function toTrial(
     sex: t.sex,
     source: t.source,
     sourceLastUpdated: t.sourceLastUpdated,
+    sourceCheckedAt: t.sourceCheckedAt?.toISOString() ?? null,
+    pendingUpdateId,
     criteria: criteria.map((c): Criterion => ({
       id: c.id,
       type: c.type,
@@ -257,6 +284,8 @@ function toSummary(t: Trial, criteriaCount: number): TrialSummary {
     sex: t.sex,
     source: t.source,
     sourceLastUpdated: t.sourceLastUpdated,
+    sourceCheckedAt: t.sourceCheckedAt,
+    pendingUpdateId: t.pendingUpdateId,
     version: t.version,
     createdBy: t.createdBy,
     createdAt: t.createdAt,

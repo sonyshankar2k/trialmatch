@@ -130,6 +130,10 @@ export interface Trial {
   source: TrialSource;
   /** For imported trials: when the record was last updated on ClinicalTrials.gov (YYYY-MM-DD). */
   sourceLastUpdated: string | null;
+  /** Week 8: when ClinicalTrials.gov was last asked about this trial. */
+  sourceCheckedAt: string | null;
+  /** Week 8: an update from the registry waiting for a decision. */
+  pendingUpdateId: number | null;
   version: number;
   createdBy: string;
   createdAt: string;
