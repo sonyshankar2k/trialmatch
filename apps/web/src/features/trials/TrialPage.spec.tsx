@@ -5,6 +5,13 @@ import { renderApp } from '../../testing/render';
 import { server } from '../../testing/server';
 
 describe('TrialPage', () => {
+  // Week 7: a saved trial also shows its "Find eligible patients" panel.
+  beforeEach(() =>
+    server.use(
+      http.get('*/api/trials/:id/match-runs', () => HttpResponse.json([])),
+    ),
+  );
+
   it('creates a trial with criteria in the order entered', async () => {
     let body: Record<string, unknown> | undefined;
     server.use(

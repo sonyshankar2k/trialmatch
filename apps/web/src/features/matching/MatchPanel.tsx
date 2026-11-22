@@ -12,6 +12,7 @@ import { Link } from 'react-router';
 import { errorMessage } from '../../lib/api';
 import {
   isActive,
+  type MatchSubject,
   useDownloadReferral,
   useFollowRun,
   useMatchRuns,
@@ -31,29 +32,49 @@ const verdictStyle = (a: CriterionAssessment) =>
     : (a.type === 'inclusion') === (a.verdict === 'met')
       ? 'text-green-700'
       : 'text-red-700';
-/** "Find matching trials" for one patient: start a run, watch it live, review the results. */
-export function MatchPanel({ patientId }: { patientId: number }) {
-  const runs = useMatchRuns(patientId);
-  const start = useStartMatch(patientId);
+/** Wording for each side: find trials for a patient, or (Week 7) patients for a trial. */
+const copy = {
+  patient: {
+    heading: 'Trial matches',
+    intro:
+      'Decision support only: a person confirms eligibility with the study team.',
+    first: 'Find matching trials',
+    again: 'Match again',
+    busy: 'Matching…',
+  },
+  trial: {
+    heading: 'Eligible patients',
+    intro:
+      'Screens your own patients against this trial. Decision support only: a person confirms eligibility with the study team.',
+    first: 'Find eligible patients',
+    again: 'Screen again',
+    busy: 'Screening…',
+  },
+} as const;
+
+/**
+ * Start a run, watch it live, review the results: "Find matching trials" on a
+ * patient, or "Find eligible patients" on a trial (Week 7).
+ */
+export function MatchPanel({ subject }: { subject: MatchSubject }) {
+  const runs = useMatchRuns(subject);
+  const start = useStartMatch(subject);
   const latest = runs.data?.[0];
-  useFollowRun(patientId, latest);
+  useFollowRun(subject, latest);
   const active = isActive(latest);
-  const review = useReviewMatch(patientId);
-  const referral = useDownloadReferral(patientId);
+  const review = useReviewMatch(subject);
   const shortlisted =
     latest?.results.filter((r) => r.decision === 'shortlisted').length ?? 0;
+  const text = copy[subject.kind];
 
   return (
     <section className="card mt-6 p-5" aria-labelledby="matches-heading">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="matches-heading" className="text-base font-semibold">
-            Trial matches
+            {text.heading}
           </h2>
-          <p className="text-sm text-slate-500">
-            Decision support only: a person confirms eligibility with the study
-            team.
-          </p>
+          <p className="text-sm text-slate-500">{text.intro}</p>
         </div>
         <button
           type="button"
@@ -61,11 +82,7 @@ export function MatchPanel({ patientId }: { patientId: number }) {
           disabled={active || start.isPending}
           onClick={() => start.mutate()}
         >
-          {active
-            ? 'Matching…'
-            : latest
-              ? 'Match again'
-              : 'Find matching trials'}
+          {active ? text.busy : latest ? text.again : text.first}
         </button>
       </div>
 
@@ -113,28 +130,19 @@ export function MatchPanel({ patientId }: { patientId: number }) {
               {new Date(latest.finishedAt ?? latest.createdAt).toLocaleString()}
             </span>
           </p>
-          {latest.results.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md bg-slate-50 px-3 py-2">
-              <p className="flex-1 text-sm text-slate-600">
+          {latest.results.length > 0 &&
+            (subject.kind === 'patient' ? (
+              <ReferralBar patientId={subject.id} shortlisted={shortlisted} />
+            ) : (
+              <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
                 {shortlisted === 0
-                  ? 'Shortlist the trials to refer this patient to.'
-                  : `${shortlisted} ${shortlisted === 1 ? 'trial' : 'trials'} shortlisted for referral.`}
+                  ? 'Shortlist the patients to refer to this trial. Each patient’s page has their referral summary.'
+                  : `${shortlisted} ${shortlisted === 1 ? 'patient' : 'patients'} shortlisted. Each patient’s page has their referral summary.`}
               </p>
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={shortlisted === 0 || referral.isPending}
-                onClick={() => referral.mutate()}
-              >
-                {referral.isPending
-                  ? 'Preparing PDF…'
-                  : 'Download referral summary (PDF)'}
-              </button>
-            </div>
-          )}
-          {(review.isError || referral.isError) && (
+            ))}
+          {review.isError && (
             <p role="alert" className="mt-3 text-sm text-red-700">
-              {errorMessage(review.error ?? referral.error)}
+              {errorMessage(review.error)}
             </p>
           )}
           <ul className="mt-3 space-y-3">
@@ -142,6 +150,7 @@ export function MatchPanel({ patientId }: { patientId: number }) {
               <MatchCard
                 key={r.id}
                 result={r}
+                show={subject.kind === 'patient' ? 'trial' : 'patient'}
                 saving={review.isPending && review.variables?.id === r.id}
                 onReview={(input) => review.mutateAsync({ id: r.id, ...input })}
               />
@@ -153,13 +162,57 @@ export function MatchPanel({ patientId }: { patientId: number }) {
   );
 }
 
-/** One assessed trial: the decision, the summary, and a table of criterion verdicts. */
+/** Week 6: the shortlist count and the referral summary PDF of one patient. */
+function ReferralBar({
+  patientId,
+  shortlisted,
+}: {
+  patientId: number;
+  shortlisted: number;
+}) {
+  const referral = useDownloadReferral(patientId);
+  return (
+    <>
+      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md bg-slate-50 px-3 py-2">
+        <p className="flex-1 text-sm text-slate-600">
+          {shortlisted === 0
+            ? 'Shortlist the trials to refer this patient to.'
+            : `${shortlisted} ${shortlisted === 1 ? 'trial' : 'trials'} shortlisted for referral.`}
+        </p>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={shortlisted === 0 || referral.isPending}
+          onClick={() => referral.mutate()}
+        >
+          {referral.isPending
+            ? 'Preparing PDF…'
+            : 'Download referral summary (PDF)'}
+        </button>
+      </div>
+      {referral.isError && (
+        <p role="alert" className="mt-3 text-sm text-red-700">
+          {errorMessage(referral.error)}
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * One assessed patient–trial pair: the decision, the summary, and a table of
+ * criterion verdicts. Headed by the trial (on a patient's page) or by the
+ * patient (on a trial's page, Week 7).
+ */
 export function MatchCard({
   result,
+  show = 'trial',
   onReview,
   saving = false,
 }: {
   result: MatchResult;
+  /** Which side of the pair the card is headed by. */
+  show?: 'trial' | 'patient';
   /** Week 6: without it the card is read-only. Resolves once the review is saved. */
   onReview?: (review: MatchReviewInput) => Promise<unknown>;
   saving?: boolean;
@@ -176,19 +229,37 @@ export function MatchCard({
           ? 'border-brand-600 ring-1 ring-brand-600'
           : 'border-slate-200'
       } ${dismissed ? 'bg-slate-50' : ''}`}
-      aria-label={`${result.title}: ${DECISION_LABELS[result.decision]}`}
+      aria-label={`${show === 'trial' ? result.title : result.pseudonym}: ${DECISION_LABELS[result.decision]}`}
     >
       <div className="flex flex-wrap items-start gap-3 p-4">
         <div className="min-w-0 flex-1">
-          <Link
-            to={`/trials/${result.trialId}`}
-            className="font-medium text-brand-700 hover:underline"
-          >
-            {result.title}
-          </Link>
-          <p className="text-xs text-slate-500">
-            {result.nctId ?? 'No NCT ID'} · {result.condition}
-          </p>
+          {show === 'trial' ? (
+            <>
+              <Link
+                to={`/trials/${result.trialId}`}
+                className="font-medium text-brand-700 hover:underline"
+              >
+                {result.title}
+              </Link>
+              <p className="text-xs text-slate-500">
+                {result.nctId ?? 'No NCT ID'} · {result.condition}
+              </p>
+            </>
+          ) : result.patientId ? (
+            <Link
+              to={`/patients/${result.patientId}`}
+              className="font-medium text-brand-700 hover:underline"
+            >
+              {result.pseudonym}
+            </Link>
+          ) : (
+            <span className="font-medium">
+              {result.pseudonym}{' '}
+              <span className="text-xs font-normal text-slate-500">
+                (patient deleted)
+              </span>
+            </span>
+          )}
           <p className="mt-1 text-sm text-slate-700">{result.summary}</p>
         </div>
         <span
