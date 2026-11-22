@@ -137,10 +137,19 @@ export interface FieldChange {
   registry: string | number | null;
 }
 
+/**
+ * A criterion the registry no longer lists. `inTrial` is false when TrialMatch
+ * does not have it as written (reworded or already removed here): Apply cannot
+ * remove it, so the person checks their version and confirms (`reconciled`).
+ */
+export interface RemovedCriterion extends CriterionInput {
+  inTrial: boolean;
+}
+
 /** Criteria compared by type and wording: new on the registry, or no longer there. */
 export interface CriteriaChange {
   added: CriterionInput[];
-  removed: CriterionInput[];
+  removed: RemovedCriterion[];
 }
 
 export const TRIAL_UPDATE_STATUSES = [
@@ -161,6 +170,12 @@ export interface TrialUpdate {
   nctId: string;
   /** The registry record's last update date (YYYY-MM-DD). */
   registryLastUpdated: string | null;
+  /**
+   * While pending, `fields` and `criteria` compare the registry with the trial
+   * as it is now, at this version; Apply sends it, so what is applied is what
+   * was shown (409 after any save).
+   */
+  trialVersion: number;
   fields: FieldChange[];
   criteria: CriteriaChange;
   /** Things the conversion had to interpret, as on import. */
@@ -185,6 +200,8 @@ export type TrialUpdateDismissInput = z.input<typeof TrialUpdateDismissSchema>;
 /** Applying also edits the trial, so it carries the trial version read as well. */
 export const TrialUpdateApplySchema = TrialUpdateDismissSchema.extend({
   version: z.number().int().min(1),
+  /** The person checked the removed criteria TrialMatch has reworded (`inTrial: false`). */
+  reconciled: z.boolean().optional(),
 });
 export type TrialUpdateApplyInput = z.input<typeof TrialUpdateApplySchema>;
 

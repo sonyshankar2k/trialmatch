@@ -48,6 +48,8 @@ export function useSaveTrial() {
     onSuccess: (trial) => {
       qc.setQueryData(trialKeys.detail(trial.id), trial);
       qc.invalidateQueries({ queryKey: ['trials', 'list'] });
+      // Week 8: a pending registry update is compared with the trial as saved.
+      qc.invalidateQueries({ queryKey: ['registry', 'update', trial.id] });
     },
   });
 }

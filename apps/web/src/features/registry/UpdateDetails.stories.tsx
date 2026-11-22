@@ -6,6 +6,7 @@ import { UpdateDetails } from './RegistryUpdate';
 const update: TrialUpdate = {
   id: 5,
   revision: 1,
+  trialVersion: 1,
   trialId: 7,
   nctId: 'NCT90000001',
   registryLastUpdated: '2026-11-19',
@@ -24,7 +25,9 @@ const update: TrialUpdate = {
   ],
   criteria: {
     added: [{ type: 'exclusion', text: 'Pregnancy or breastfeeding' }],
-    removed: [{ type: 'inclusion', text: 'Uses an inhaled steroid' }],
+    removed: [
+      { type: 'inclusion', text: 'Uses an inhaled steroid', inTrial: true },
+    ],
   },
   warnings: [
     'The minimum age was given in months (192 months); rounded to 16 years.',
@@ -70,5 +73,28 @@ export const WithUnsavedEdits: Story = {
     await expect(
       canvas.getByRole('button', { name: 'Keep current version' }),
     ).toBeEnabled();
+  },
+};
+
+/** A criterion the registry removed was reworded here: Apply waits for a confirmation. */
+export const WithRewordedCriterion: Story = {
+  args: {
+    update: {
+      ...update,
+      criteria: {
+        added: [{ type: 'inclusion', text: 'Aged 16 or over' }],
+        removed: [
+          { type: 'inclusion', text: 'Aged 18 or over', inTrial: false },
+        ],
+      },
+    },
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const apply = canvas.getByRole('button', { name: 'Apply update' });
+    await expect(apply).toBeDisabled();
+    await userEvent.click(canvas.getByRole('checkbox'));
+    await userEvent.click(apply);
+    await expect(args.onApply).toHaveBeenCalledWith(true);
   },
 };

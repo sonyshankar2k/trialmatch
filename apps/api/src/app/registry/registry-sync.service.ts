@@ -14,6 +14,7 @@ import {
   type RegistryTrialInput,
   type Trial,
   type TrialUpdate,
+  type TrialUpdateApplyInput,
 } from '@trialmatch/shared';
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/database';
@@ -135,20 +136,44 @@ export class RegistrySyncService {
         eq(trialUpdates.status, 'pending'),
       ),
     );
-    return row ? toTrialUpdate(row) : null;
+    if (!row) return null;
+    const { trial, diff } = await this.live(this.db, row.update);
+    return toTrialUpdate(row, { ...diff, trialVersion: trial.version });
+  }
+
+  /**
+   * The pending update compared with the trial as it is now (local saves since
+   * it was detected count): the registry's version against the baseline the
+   * trial still has, and the trial's current values next to it.
+   */
+  private async live(db: Db | Tx, update: UpdateRow) {
+    const [{ snapshot }] = await db
+      .select({ snapshot: trials.sourceSnapshot })
+      .from(trials)
+      .where(eq(trials.id, update.trialId));
+    const trial = await this.trials.get(update.trialId, db);
+    return {
+      trial,
+      diff: diffRegistry(
+        snapshot ?? trialAsRegistryInput(trial),
+        update.snapshot,
+        trial,
+      ),
+    };
   }
 
   /**
    * Take the registry's values for the changed fields, and its criteria changes
    * (removed criteria go, added ones are appended; local wording of the others
-   * is kept). `revision` is the update the person reviewed and `version` the
-   * trial they read: 409 if either is stale. Resolving the update and saving
-   * the trial commit together, so a failed save leaves the update pending.
+   * is kept). The comparison is worked out again against the trial now, which
+   * must be at `version` (the version the person saw it against): 409 if not,
+   * as for a stale `revision`. Removed criteria the trial has reworded need
+   * `reconciled`. Resolving and saving commit together; any failure leaves the
+   * update pending.
    */
   async apply(
     updateId: number,
-    revision: number,
-    version: number,
+    { revision, version, reconciled }: TrialUpdateApplyInput,
     userId: number,
   ): Promise<Trial> {
     return this.db.transaction(async (tx) => {
@@ -159,9 +184,16 @@ export class RegistrySyncService {
         'applied',
         userId,
       );
-      const trial = await this.trials.get(update.trialId, tx);
+      const { trial, diff } = await this.live(tx, update);
+      const { added, removed } = diff.criteria;
+      if (removed.some((c) => !c.inTrial) && !reconciled)
+        throw new BadRequestException({
+          statusCode: 400,
+          message:
+            'Some criteria removed on ClinicalTrials.gov are worded differently here, so Apply cannot remove them. Check your versions, then confirm and apply.',
+        } satisfies ApiError);
       const patch: Record<string, unknown> = {};
-      for (const { field } of update.fields) {
+      for (const { field } of diff.fields) {
         patch[field] = update.snapshot[field];
         // Ages move together, so the range stays valid.
         if (field === 'minAge' || field === 'maxAge') {
@@ -169,9 +201,10 @@ export class RegistrySyncService {
           patch['maxAge'] = update.snapshot.maxAge;
         }
       }
-      const { added, removed } = update.criteria;
       if (added.length || removed.length) {
-        const gone = new Set(removed.map(criterionKey));
+        const gone = new Set(
+          removed.filter((c) => c.inTrial).map(criterionKey),
+        );
         patch['criteria'] = [
           ...trial.criteria
             .map(({ type, text }) => ({ type, text }))
@@ -179,9 +212,24 @@ export class RegistrySyncService {
           ...added,
         ];
       }
+      const parsed = TrialUpdateSchema.safeParse({ ...patch, version });
+      if (!parsed.success)
+        throw new BadRequestException({
+          statusCode: 400,
+          message: `Applying this update would leave the trial invalid (${parsed.error.issues
+            .map((i) => `${i.path.join('.') || 'trial'}: ${i.message}`)
+            .join(
+              '; ',
+            )}). Edit the trial here first, for example remove criteria you no longer need, then apply.`,
+        } satisfies ApiError);
+      // History records what was actually applied.
+      await tx
+        .update(trialUpdates)
+        .set({ fields: diff.fields, criteria: diff.criteria })
+        .where(eq(trialUpdates.id, update.id));
       return this.trials.update(
         trial.id,
-        TrialUpdateSchema.parse({ ...patch, version }),
+        parsed.data,
         {
           sourceSnapshot: update.snapshot,
           sourceLastUpdated: update.registryLastUpdated,
@@ -235,6 +283,22 @@ export class RegistrySyncService {
       // Waits for any Apply / Keep on this trial, then reads the baseline they left.
       const snapshot = await this.lockTrial(tx, trial.id);
       const current = await this.trials.get(trial.id, tx);
+      const [pending] = await tx
+        .select()
+        .from(trialUpdates)
+        .where(
+          and(
+            eq(trialUpdates.trialId, trial.id),
+            eq(trialUpdates.status, 'pending'),
+          ),
+        );
+      // A delayed response older than what TrialMatch already has changes nothing.
+      const known = [current.sourceLastUpdated, pending?.registryLastUpdated]
+        .filter((d): d is string => !!d)
+        .sort()
+        .at(-1);
+      if (converted.lastUpdated && known && converted.lastUpdated < known)
+        return;
       const diff = diffRegistry(
         snapshot ?? trialAsRegistryInput(current),
         converted.trial,
@@ -269,15 +333,6 @@ export class RegistrySyncService {
         warnings: converted.warnings,
         detectedAt: now,
       };
-      const [pending] = await tx
-        .select()
-        .from(trialUpdates)
-        .where(
-          and(
-            eq(trialUpdates.trialId, trial.id),
-            eq(trialUpdates.status, 'pending'),
-          ),
-        );
       if (!pending)
         await tx.insert(trialUpdates).values({ trialId: trial.id, ...values });
       else if (!sameChange(pending, values))
@@ -288,7 +343,14 @@ export class RegistrySyncService {
           .where(eq(trialUpdates.id, pending.id));
       await tx
         .update(trials)
-        .set({ sourceCheckedAt: now })
+        // A trial imported before Week 8 keeps the baseline it was compared
+        // with, so later comparisons (and Apply) start from the same place.
+        .set({
+          sourceCheckedAt: now,
+          ...(snapshot
+            ? {}
+            : { sourceSnapshot: trialAsRegistryInput(current) }),
+        })
         .where(eq(trials.id, trial.id));
     });
   }
@@ -378,13 +440,16 @@ export class RegistrySyncService {
   }
 }
 
-/** The same registry change seen again (e.g. Check now twice): keep the revision. */
+/**
+ * The same registry record seen again (e.g. Check now twice): keep the
+ * revision. Local saves don't count; the comparison follows the trial anyway.
+ */
 const sameChange = (
   row: UpdateRow,
-  v: Pick<UpdateRow, 'registryLastUpdated' | 'fields' | 'criteria'>,
+  v: Pick<UpdateRow, 'registryLastUpdated' | 'snapshot'>,
 ) =>
   row.registryLastUpdated === v.registryLastUpdated &&
-  stable([row.fields, row.criteria]) === stable([v.fields, v.criteria]);
+  stable(row.snapshot) === stable(v.snapshot);
 
 /** JSON with sorted keys: jsonb does not keep the key order it was given. */
 const stable = (v: unknown): string =>
@@ -401,11 +466,10 @@ const stable = (v: unknown): string =>
 const criterionKey = (c: CriterionInput) =>
   `${c.type}\u0000${c.text.replace(/\s+/g, ' ').trim()}`;
 
-function toTrialUpdate(row: {
-  update: UpdateRow;
-  nctId: string | null;
-  resolvedBy: string | null;
-}): TrialUpdate {
+function toTrialUpdate(
+  row: { update: UpdateRow; nctId: string | null; resolvedBy: string | null },
+  live: Pick<TrialUpdate, 'fields' | 'criteria' | 'trialVersion'>,
+): TrialUpdate {
   const u = row.update;
   return {
     id: u.id,
@@ -413,8 +477,9 @@ function toTrialUpdate(row: {
     trialId: u.trialId,
     nctId: row.nctId ?? (u.snapshot as RegistryTrialInput).nctId,
     registryLastUpdated: u.registryLastUpdated,
-    fields: u.fields,
-    criteria: u.criteria,
+    trialVersion: live.trialVersion,
+    fields: live.fields,
+    criteria: live.criteria,
     warnings: u.warnings,
     status: u.status,
     detectedAt: u.detectedAt.toISOString(),

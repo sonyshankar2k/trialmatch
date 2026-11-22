@@ -16,13 +16,14 @@ const imported = makeTrial({
 const update: TrialUpdate = {
   id: 5,
   revision: 1,
+  trialVersion: imported.version,
   trialId: 7,
   nctId: 'NCT99000001',
   registryLastUpdated: '2026-11-19',
   fields: [{ field: 'status', current: 'recruiting', registry: 'completed' }],
   criteria: {
     added: [{ type: 'exclusion', text: 'Pregnancy' }],
-    removed: [{ type: 'inclusion', text: 'HbA1c 7–10.5%' }],
+    removed: [{ type: 'inclusion', text: 'HbA1c 7–10.5%', inTrial: true }],
   },
   warnings: [],
   status: 'pending',
@@ -82,7 +83,11 @@ describe('registry updates on the trial page (Week 8)', () => {
     expect(
       await screen.findByText(/Update applied. Screen your patients again/),
     ).toBeInTheDocument();
-    expect(sent).toEqual({ revision: 1, version: imported.version });
+    expect(sent).toEqual({
+      revision: 1,
+      version: imported.version,
+      reconciled: false,
+    });
     expect(screen.queryByRole('button', { name: 'Apply update' })).toBeNull();
     expect(screen.getByLabelText('Status')).toHaveValue('completed');
   });
@@ -160,6 +165,43 @@ describe('registry updates on the trial page (Week 8)', () => {
     ).toBeInTheDocument();
     const row = await screen.findByRole('row', { name: /Status/ });
     expect(await within(row).findByText('Suspended')).toBeInTheDocument();
+  });
+
+  it('asks to check a reworded criterion before applying its removal', async () => {
+    serve({
+      ...update,
+      criteria: {
+        added: [],
+        removed: [
+          { type: 'inclusion', text: 'Aged 18 or over', inTrial: false },
+        ],
+      },
+    });
+    let sent: unknown;
+    server.use(
+      http.post('*/api/registry/updates/5/apply', async ({ request }) => {
+        sent = await request.json();
+        return HttpResponse.json({ ...imported, pendingUpdateId: null });
+      }),
+    );
+    const { user } = renderApp('/trials/7');
+    const apply = await screen.findByRole('button', { name: 'Apply update' });
+    expect(
+      screen.getByText(/Not in TrialMatch as written/),
+    ).toBeInTheDocument();
+    expect(apply).toBeDisabled();
+    expect(apply).toHaveAccessibleDescription(
+      'Confirm you have checked the reworded criteria before applying.',
+    );
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: /checked TrialMatch’s versions of the removed criteria/,
+      }),
+    );
+    expect(apply).toBeEnabled();
+    await user.click(apply);
+    await screen.findByText(/Update applied/);
+    expect(sent).toMatchObject({ reconciled: true });
   });
 
   it('checks now, says when the trial is in step, and shows the new check time', async () => {

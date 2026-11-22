@@ -110,6 +110,10 @@ function TrialEditor({ trial }: { trial?: Trial }) {
   const loadTheirs = () => {
     if (!conflict) return;
     qc.setQueryData(trialKeys.detail(conflict.id), conflict);
+    // Week 8: a pending registry update is compared with the version now loaded.
+    void qc.invalidateQueries({
+      queryKey: ['registry', 'update', conflict.id],
+    });
     setBase(conflict);
     form.reset(toFormValues(conflict));
     setConflict(null);
@@ -232,6 +236,7 @@ function TrialEditor({ trial }: { trial?: Trial }) {
               setMessage(note);
               // Keeping the current version changes no field or version: the draft stays.
               if (kind === 'kept') return;
+              // `reloaded` also refreshes the comparison (the update query is refetched).
               setBase(next);
               setConflict(null);
               form.reset(toFormValues(next));

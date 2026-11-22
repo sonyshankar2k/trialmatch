@@ -100,13 +100,23 @@ export function useResolveUpdate(trialId: number) {
   return useMutation({
     mutationFn: (
       action:
-        | { kind: 'apply'; id: number; revision: number; version: number }
+        | {
+            kind: 'apply';
+            id: number;
+            revision: number;
+            version: number;
+            reconciled: boolean;
+          }
         | { kind: 'dismiss'; id: number; revision: number },
     ) =>
       action.kind === 'apply'
         ? api<Trial>(`/registry/updates/${action.id}/apply`, {
             method: 'POST',
-            body: { revision: action.revision, version: action.version },
+            body: {
+              revision: action.revision,
+              version: action.version,
+              reconciled: action.reconciled,
+            },
           })
         : api<Trial>(`/registry/updates/${action.id}/dismiss`, {
             method: 'POST',

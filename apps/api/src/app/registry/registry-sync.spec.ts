@@ -372,6 +372,141 @@ describe('registry sync (Week 8)', () => {
     expect(again.body.message).toMatch(/already applied/);
   });
 
+  const patchTrial = async (
+    auth: Record<string, string>,
+    trial: Trial,
+    body: Record<string, unknown>,
+  ) =>
+    (
+      await t
+        .http()
+        .patch(`/api/trials/${trial.id}`)
+        .set(auth)
+        .send({ version: trial.version, ...body })
+        .expect(200)
+    ).body as Trial;
+  const applyUpdate = (
+    auth: Record<string, string>,
+    update: TrialUpdate,
+    body: Record<string, unknown> = {},
+  ) =>
+    t
+      .http()
+      .post(`/api/registry/updates/${update.id}/apply`)
+      .set(auth)
+      .send({
+        revision: update.revision,
+        version: update.trialVersion,
+        ...body,
+      });
+
+  it('flags a removal the trial has reworded, and applies only once it is checked', async () => {
+    const { auth, trial } = await imported();
+    await patchTrial(auth, trial, {
+      criteria: [
+        { type: 'inclusion', text: 'Adults with moderate asthma' },
+        { type: 'inclusion', text: 'Uses an inhaled corticosteroid' },
+        { type: 'exclusion', text: 'Current smoker' },
+      ],
+    });
+    registry.study = {
+      ...original(),
+      date: '2026-03-02',
+      inclusion: ['Adults with moderate asthma', 'Uses a daily inhaler'],
+    };
+    await sync(auth);
+    const update = (await pending(auth, trial.id)) as TrialUpdate;
+    expect(update.criteria).toEqual({
+      added: [{ type: 'inclusion', text: 'Uses a daily inhaler' }],
+      removed: [
+        { type: 'inclusion', text: 'Uses an inhaled steroid', inTrial: false },
+      ],
+    });
+
+    const refused = await applyUpdate(auth, update).expect(400);
+    expect(refused.body.message).toMatch(/worded differently here/);
+    expect((await pending(auth, trial.id))?.status).toBe('pending');
+
+    const applied = (
+      await applyUpdate(auth, update, { reconciled: true }).expect(200)
+    ).body as Trial;
+    expect(applied.criteria.map((c) => `${c.code} ${c.text}`)).toEqual([
+      'I1 Adults with moderate asthma',
+      'I2 Uses an inhaled corticosteroid',
+      'I3 Uses a daily inhaler',
+      'E1 Current smoker',
+    ]);
+  });
+
+  it('compares with the trial as it is now, and applies against that version', async () => {
+    const { auth, trial } = await imported();
+    registry.study = { ...original(), status: 'COMPLETED', date: '2026-03-02' };
+    await sync(auth);
+    const seen = (await pending(auth, trial.id)) as TrialUpdate;
+    expect(seen).toMatchObject({
+      trialVersion: trial.version,
+      fields: [{ field: 'status', current: 'recruiting' }],
+    });
+
+    // A local save after detection shows up on the TrialMatch side.
+    const saved = await patchTrial(auth, trial, { status: 'suspended' });
+    const now = (await pending(auth, trial.id)) as TrialUpdate;
+    expect(now).toMatchObject({
+      revision: seen.revision,
+      trialVersion: saved.version,
+      fields: [
+        { field: 'status', current: 'suspended', registry: 'completed' },
+      ],
+    });
+    // Applying the comparison seen before that save is refused.
+    await applyUpdate(auth, seen).expect(409);
+    await applyUpdate(auth, now).expect(200);
+  });
+
+  it('ignores a registry response older than what TrialMatch already has', async () => {
+    const { auth, trial } = await imported();
+    registry.study = { ...original(), status: 'COMPLETED', date: '2026-03-02' };
+    await sync(auth);
+    // A delayed answer carrying an earlier record.
+    registry.study = { ...original(), minAge: '21 Years', date: '2026-02-01' };
+    await t
+      .http()
+      .post(`/api/registry/trials/${trial.id}/check`)
+      .set(auth)
+      .expect(200);
+    expect(await pending(auth, trial.id)).toMatchObject({
+      revision: 1,
+      registryLastUpdated: '2026-03-02',
+      fields: [{ field: 'status' }],
+    });
+  });
+
+  it('explains when applying would exceed the criteria limit, and keeps the update', async () => {
+    const { auth, trial } = await imported();
+    const extra = Array.from({ length: 97 }, (_, i) => ({
+      type: 'inclusion' as const,
+      text: `Local criterion ${i + 1}`,
+    }));
+    await patchTrial(auth, trial, {
+      criteria: [
+        { type: 'inclusion', text: 'Adults with moderate asthma' },
+        { type: 'inclusion', text: 'Uses an inhaled steroid' },
+        { type: 'exclusion', text: 'Current smoker' },
+        ...extra,
+      ],
+    });
+    registry.study = {
+      ...original(),
+      date: '2026-03-02',
+      exclusion: ['Current smoker', 'Pregnancy'],
+    };
+    await sync(auth);
+    const update = (await pending(auth, trial.id)) as TrialUpdate;
+    const res = await applyUpdate(auth, update).expect(400);
+    expect(res.body.message).toMatch(/would leave the trial invalid.*criteria/);
+    expect((await pending(auth, trial.id))?.status).toBe('pending');
+  });
+
   it('keeps the current version: nothing changes and the change is not raised again', async () => {
     const { auth, trial } = await imported();
     registry.study = { ...original(), status: 'SUSPENDED', date: '2026-05-05' };

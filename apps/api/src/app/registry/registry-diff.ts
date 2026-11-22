@@ -37,9 +37,14 @@ export function diffRegistry(
       added: after.criteria.filter(
         (c) => !had.has(key(c)) && !here.has(key(c)),
       ),
-      removed: before.criteria.filter(
-        (c) => !has.has(key(c)) && here.has(key(c)),
-      ),
+      // All of them: one reworded here is flagged rather than silently kept.
+      removed: before.criteria
+        .filter((c) => !has.has(key(c)))
+        .map((c) => ({
+          type: c.type,
+          text: c.text,
+          inTrial: here.has(key(c)),
+        })),
     },
   };
 }

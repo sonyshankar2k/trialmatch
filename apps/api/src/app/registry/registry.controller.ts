@@ -85,10 +85,10 @@ export class RegistryController {
   @HttpCode(200)
   apply(
     @Param() { id }: IdParam,
-    @Body() { revision, version }: ApplyBody,
+    @Body() body: ApplyBody,
     @CurrentUser() user: AuthUser,
   ): Promise<Trial> {
-    return this.sync_.apply(id, revision, version, user.id);
+    return this.sync_.apply(id, body, user.id);
   }
 
   /** Keep the trial as it is; the registry's version counts as seen. Carries the revision reviewed. */

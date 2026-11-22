@@ -54,7 +54,7 @@ export function RegistrySync({
         ),
     });
 
-  const onResolve = (kind: 'apply' | 'dismiss') => {
+  const onResolve = (kind: 'apply' | 'dismiss', reconciled = false) => {
     if (!update) return;
     resolve.mutate(
       kind === 'apply'
@@ -62,7 +62,9 @@ export function RegistrySync({
             kind,
             id: update.id,
             revision: update.revision,
-            version: trial.version,
+            // The version the comparison shown was made against: what is applied is what was shown.
+            version: update.trialVersion,
+            reconciled,
           }
         : { kind, id: update.id, revision: update.revision },
       {
@@ -133,7 +135,7 @@ export function RegistrySync({
           update={update}
           busy={resolve.isPending}
           unsavedChanges={unsavedChanges}
-          onApply={() => onResolve('apply')}
+          onApply={(reconciled) => onResolve('apply', reconciled)}
           onKeep={() => onResolve('dismiss')}
         />
       )}
@@ -141,7 +143,7 @@ export function RegistrySync({
   );
 }
 
-/** What the registry changed, next to what TrialMatch has, with the two choices. */
+/** What the registry changed, next to what TrialMatch has now, with the two choices. */
 export function UpdateDetails({
   update,
   busy = false,
@@ -152,11 +154,21 @@ export function UpdateDetails({
   update: TrialUpdate;
   busy?: boolean;
   unsavedChanges?: boolean;
-  onApply: () => void;
+  /** `reconciled`: the person checked the removed criteria TrialMatch words differently. */
+  onApply: (reconciled: boolean) => void;
   onKeep: () => void;
 }) {
   const { added, removed } = update.criteria;
+  const unmatched = removed.filter((c) => !c.inTrial);
+  const [reconciled, setReconciled] = useState(false);
+  const nothingLeft =
+    update.fields.length === 0 && added.length === 0 && removed.length === 0;
   const hintId = `update-${update.id}-hint`;
+  const hint = unsavedChanges
+    ? 'Save or discard your edits before applying.'
+    : unmatched.length > 0 && !reconciled
+      ? 'Confirm you have checked the reworded criteria before applying.'
+      : null;
   return (
     <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3">
       <p className="text-sm font-medium text-amber-900">
@@ -174,6 +186,12 @@ export function UpdateDetails({
           <span className="sr-only"> (opens in a new tab)</span>
         </a>
       </p>
+      {nothingLeft && (
+        <p className="mt-2 text-sm text-slate-700">
+          TrialMatch already has these changes. Apply or keep to mark the
+          registry change as seen.
+        </p>
+      )}
       {update.fields.length > 0 && (
         <table className="mt-2 w-full bg-white text-left text-sm">
           <caption className="sr-only">Changed fields</caption>
@@ -212,9 +230,27 @@ export function UpdateDetails({
               <li key={`-${c.type}${c.text}`} className="text-red-800">
                 <span className="font-medium">Removed {c.type}:</span>{' '}
                 <s>{c.text}</s>
+                {!c.inTrial && (
+                  <span className="block text-xs text-amber-900">
+                    Not in TrialMatch as written: it was reworded or already
+                    removed here, so Apply can’t remove it. Check your version
+                    in the criteria below.
+                  </span>
+                )}
               </li>
             ))}
           </ul>
+          {unmatched.length > 0 && (
+            <label className="mt-2 flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={reconciled}
+                onChange={(e) => setReconciled(e.target.checked)}
+              />
+              I’ve checked TrialMatch’s versions of the removed criteria
+            </label>
+          )}
         </div>
       )}
       {update.warnings.length > 0 && (
@@ -228,9 +264,9 @@ export function UpdateDetails({
         <button
           type="button"
           className="btn-primary px-2.5 py-1 text-xs"
-          disabled={busy || unsavedChanges}
-          aria-describedby={unsavedChanges ? hintId : undefined}
-          onClick={onApply}
+          disabled={busy || hint !== null}
+          aria-describedby={hint ? hintId : undefined}
+          onClick={() => onApply(reconciled)}
         >
           Apply update
         </button>
@@ -242,9 +278,9 @@ export function UpdateDetails({
         >
           Keep current version
         </button>
-        {unsavedChanges && (
+        {hint && (
           <span id={hintId} className="text-xs text-slate-600">
-            Save or discard your edits before applying.
+            {hint}
           </span>
         )}
       </div>
