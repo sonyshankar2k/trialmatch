@@ -14,6 +14,7 @@ import { eq } from 'drizzle-orm';
 import { DB, type Db } from '../db/database';
 import { trials } from '../db/schema';
 import { CtgovClient } from './ctgov.client';
+import { isOutdated } from './registry-sync.service';
 
 const NCT = 'NCT91000001';
 
@@ -479,6 +480,18 @@ describe('registry sync (Week 8)', () => {
       registryLastUpdated: '2026-03-02',
       fields: [{ field: 'status' }],
     });
+
+    // A delayed copy of the imported record matches the baseline, but must not
+    // clear the newer pending update either.
+    registry.study = original();
+    await t
+      .http()
+      .post(`/api/registry/trials/${trial.id}/check`)
+      .set(auth)
+      .expect(200);
+    expect(await pending(auth, trial.id)).toMatchObject({
+      registryLastUpdated: '2026-03-02',
+    });
   });
 
   it('explains when applying would exceed the criteria limit, and keeps the update', async () => {
@@ -620,5 +633,19 @@ describe('registry sync (Week 8)', () => {
   it('requires sign-in', async () => {
     await t.http().post('/api/registry/sync').expect(401);
     await t.http().post('/api/registry/updates/1/apply').expect(401);
+  });
+});
+
+describe('ordering registry records (Week 8)', () => {
+  it.each([
+    ['2026-03-01', ['2026-03-02'], true],
+    ['2026-03-02', ['2026-03-02'], false], // same day: compared by content
+    ['2026-03-03', ['2026-01-10', '2026-03-02'], false],
+    ['2026-02-01', ['2026-01-10', '2026-03-02'], true], // older than the pending one
+    [null, ['2026-03-02'], true], // undated can't be shown newer
+    [null, [null, undefined], false], // nothing dated to compare with
+    ['2026-03-01', [null], false],
+  ] as const)('%s against %j is outdated: %s', (date, known, outdated) => {
+    expect(isOutdated(date, [...known])).toBe(outdated);
   });
 });

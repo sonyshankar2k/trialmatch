@@ -186,6 +186,12 @@ export const matchRuns = pgTable(
     engine: varchar('engine', { length: 20 }),
     error: text('error'),
     attempts: integer('attempts').notNull().default(0),
+    /**
+     * Week 8, trial runs: the trial version the worker loaded and screened
+     * (set when it starts, again on a retry). Null until then, and for runs
+     * from before Week 8.
+     */
+    trialVersion: integer('trial_version'),
     createdAt: timestamps.createdAt,
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },

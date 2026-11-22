@@ -247,10 +247,7 @@ function TrialEditor({ trial }: { trial?: Trial }) {
       </form>
       {/* Week 7: outside the form, so its buttons never submit the trial. */}
       {base && (
-        <MatchPanel
-          subject={{ kind: 'trial', id: base.id }}
-          changedAt={latest?.updatedAt}
-        />
+        <MatchPanel subject={{ kind: 'trial', id: base.id }} trial={latest} />
       )}
     </>
   );

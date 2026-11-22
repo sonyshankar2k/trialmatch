@@ -88,6 +88,13 @@ describe('finding patients for a trial (Week 7)', () => {
       status: 'succeeded',
       stage: expect.stringMatching(/^2 patients checked: /),
     });
+    // Week 8: the run records the trial version the worker screened.
+    const trial = await t
+      .http()
+      .get(`/api/trials/${diabetes}`)
+      .set(alice)
+      .expect(200);
+    expect(screened.trialVersion).toBe(trial.body.version);
     expect(screened.results.map((r) => r.pseudonym).sort()).toEqual([
       'P-0001',
       'P-0101',

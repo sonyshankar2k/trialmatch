@@ -24,6 +24,7 @@ const run = (overrides: Partial<MatchRun>): MatchRun => ({
   kind: 'patient',
   patientId: 1,
   trialId: null,
+  trialVersion: null,
   status: 'queued',
   progress: 0,
   stage: 'Waiting for a worker',
@@ -245,6 +246,7 @@ describe('MatchPanel on a trial (Week 7)', () => {
     kind: 'trial',
     patientId: null,
     trialId: 7,
+    trialVersion: makeTrial().version,
     status: 'succeeded',
     progress: 100,
     engine: 'rules',
@@ -303,5 +305,30 @@ describe('MatchPanel on a trial (Week 7)', () => {
       screen.queryByRole('button', { name: /referral summary/ }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Screen again' })).toBeEnabled();
+  });
+
+  // Week 8: staleness follows the trial version the worker screened, not when the run was queued.
+  it.each([
+    ['the version screened is current', makeTrial().version, false],
+    ['the trial changed after it was screened', makeTrial().version - 1, true],
+  ])('flags old results only when %s', async (_, trialVersion, stale) => {
+    server.use(
+      http.get('*/api/trials/7', () => HttpResponse.json(makeTrial({ id: 7 }))),
+      http.get('*/api/trials/7/match-runs', () =>
+        // Queued before the trial's last save, but screened by the worker later.
+        HttpResponse.json([
+          { ...screening, trialVersion, createdAt: '2026-10-01T09:00:00.000Z' },
+        ]),
+      ),
+    );
+    renderApp('/trials/7');
+    expect(
+      await screen.findByText(
+        '1 patient checked: 0 likely eligible, 1 need review',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/This trial changed after this screening/) !== null,
+    ).toBe(stale);
   });
 });

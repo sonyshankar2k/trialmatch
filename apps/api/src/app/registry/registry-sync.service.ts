@@ -292,12 +292,15 @@ export class RegistrySyncService {
             eq(trialUpdates.status, 'pending'),
           ),
         );
-      // A delayed response older than what TrialMatch already has changes nothing.
-      const known = [current.sourceLastUpdated, pending?.registryLastUpdated]
-        .filter((d): d is string => !!d)
-        .sort()
-        .at(-1);
-      if (converted.lastUpdated && known && converted.lastUpdated < known)
+      // Under the lock, before comparing: a response older than the newest
+      // record TrialMatch has (accepted baseline or pending update) changes
+      // nothing, so a delayed answer can't replace, clear or roll back newer state.
+      if (
+        isOutdated(converted.lastUpdated, [
+          current.sourceLastUpdated,
+          pending?.registryLastUpdated,
+        ])
+      )
         return;
       const diff = diffRegistry(
         snapshot ?? trialAsRegistryInput(current),
@@ -438,6 +441,25 @@ export class RegistrySyncService {
       .innerJoin(trials, eq(trials.id, trialUpdates.trialId))
       .leftJoin(users, eq(users.id, trialUpdates.resolvedById));
   }
+}
+
+/**
+ * Registry records are ordered by their last-update date (YYYY-MM-DD, so string
+ * order is date order). A record dated the same day as the newest known one is
+ * not outdated: its content is compared as usual. An undated record can't be
+ * shown to be newer, so it is outdated once TrialMatch has any dated record,
+ * and accepted only when nothing known is dated either.
+ */
+export function isOutdated(
+  date: string | null,
+  known: (string | null | undefined)[],
+): boolean {
+  const newest = known
+    .filter((d): d is string => !!d)
+    .sort()
+    .at(-1);
+  if (!newest) return false;
+  return date === null || date < newest;
 }
 
 /**
