@@ -329,7 +329,9 @@ function SyncAll() {
         <span role="status">
           Checked {r.checked} {r.checked === 1 ? 'trial' : 'trials'}:{' '}
           {r.updated === 0
-            ? 'all in step.'
+            ? r.failed.length === 0
+              ? 'all in step.'
+              : 'no updates detected among successfully checked trials.'
             : `${r.updated} with ${r.updated === 1 ? 'an update' : 'updates'} to review (marked in the trials list).`}
           {r.failed.length > 0 &&
             ` Couldn’t check ${r.failed.join(', ')}; try again later.`}
