@@ -52,6 +52,8 @@ export function useSavePatient() {
     onSuccess: (p) => {
       qc.setQueryData(patientKeys.detail(p.id), p);
       qc.invalidateQueries({ queryKey: ['patients', 'list'] });
+      // Week 9: open History panels show the new event.
+      void qc.invalidateQueries({ queryKey: ['audit'] });
     },
   });
 }

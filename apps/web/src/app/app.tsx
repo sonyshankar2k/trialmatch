@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router';
 import { Layout } from '../components/Layout';
+import { AuditLogPage } from '../features/audit/AuditLogPage';
 import { LoginPage } from '../features/auth/LoginPage';
 import { PatientPage } from '../features/patients/PatientPage';
 import { PatientsPage } from '../features/patients/PatientsPage';
@@ -44,6 +45,7 @@ export function App({ queryClient }: { queryClient?: QueryClient }) {
             <Route path="trials/:id" element={<TrialPage />} />
             <Route path="patients" element={<PatientsPage />} />
             <Route path="patients/:id" element={<PatientPage />} />
+            <Route path="audit" element={<AuditLogPage />} />
             <Route path="*" element={<Navigate to="/trials" replace />} />
           </Route>
         </Routes>

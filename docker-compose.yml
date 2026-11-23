@@ -44,6 +44,8 @@ services:
       AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
       REDIS_URL: redis://redis:6379
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Week 9: administrators (they can read the audit log). The seeded Alice already is one.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # A short pause per trial so the live progress is visible in the demo.
       MATCH_STEP_DELAY_MS: '500'
     ports:

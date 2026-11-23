@@ -50,6 +50,8 @@ export function useSaveTrial() {
       qc.invalidateQueries({ queryKey: ['trials', 'list'] });
       // Week 8: a pending registry update is compared with the trial as saved.
       qc.invalidateQueries({ queryKey: ['registry', 'update', trial.id] });
+      // Week 9: open History panels show the new event.
+      void qc.invalidateQueries({ queryKey: ['audit'] });
     },
   });
 }

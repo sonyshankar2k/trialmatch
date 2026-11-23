@@ -52,7 +52,7 @@ export class PatientsController {
     @CurrentUser() user: AuthUser,
     @Param() { id }: IdParam,
   ): Promise<Patient> {
-    return this.patients.get(user.id, id);
+    return this.patients.view(user.id, id);
   }
 
   @Post()

@@ -8,7 +8,12 @@ import type {
 
 export const aliceAuth = {
   accessToken: 'test-token',
-  user: { id: 1, email: 'alice@trialmatch.dev', displayName: 'Alice Chen' },
+  user: {
+    id: 1,
+    email: 'alice@trialmatch.dev',
+    displayName: 'Alice Chen',
+    role: 'coordinator' as const,
+  },
 };
 
 export function makeTrial(overrides: Partial<Trial> = {}): Trial {

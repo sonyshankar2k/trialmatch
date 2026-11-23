@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { ConflictBanner } from '../../components/ConflictBanner';
 import { ApiRequestError, errorMessage } from '../../lib/api';
 import { formatDate } from '../../lib/dates';
+import { HistoryPanel } from '../audit/HistoryPanel';
 import { MatchPanel } from '../matching/MatchPanel';
 import { RegistrySync } from '../registry/RegistryUpdate';
 import { changedFields } from '../../lib/diff';
@@ -249,6 +250,7 @@ function TrialEditor({ trial }: { trial?: Trial }) {
       {base && (
         <MatchPanel subject={{ kind: 'trial', id: base.id }} trial={latest} />
       )}
+      {base && <HistoryPanel subject={{ kind: 'trial', id: base.id }} />}
     </>
   );
 }

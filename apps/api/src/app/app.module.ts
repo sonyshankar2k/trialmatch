@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { randomUUID } from 'node:crypto';
 import { LoggerModule } from 'nestjs-pino';
 import { ZodValidationPipe } from 'nestjs-zod';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { ApiExceptionFilter } from './common/errors';
 import { validateEnv } from './config';
@@ -51,6 +52,7 @@ import { TrialsModule } from './trials/trials.module';
       },
     }),
     DatabaseModule,
+    AuditModule,
     AuthModule,
     TrialsModule,
     PatientsModule,

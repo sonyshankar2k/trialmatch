@@ -19,6 +19,7 @@ import {
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { InjectDb, type Db } from '../db/database';
 import { trials, trialUpdates, users } from '../db/schema';
+import { AuditService } from '../audit/audit.service';
 import { TrialsService, type Tx } from '../trials/trials.service';
 import { NotATrialError, studyToTrial } from './ctgov-mapper';
 import { CtgovClient } from './ctgov.client';
@@ -47,6 +48,7 @@ export class RegistrySyncService {
     @InjectDb() private readonly db: Db,
     private readonly ctgov: CtgovClient,
     private readonly trials: TrialsService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -235,6 +237,15 @@ export class RegistrySyncService {
           sourceLastUpdated: update.registryLastUpdated,
         },
         tx,
+        // Week 9: recorded as the registry Apply, with the fields it changed.
+        {
+          action: 'registry.apply',
+          details: {
+            updateId: update.id,
+            revision: update.revision,
+            registryLastUpdated: update.registryLastUpdated,
+          },
+        },
       );
     });
   }
@@ -260,7 +271,20 @@ export class RegistrySyncService {
           sourceLastUpdated: update.registryLastUpdated,
         })
         .where(eq(trials.id, update.trialId));
-      return this.trials.get(update.trialId, tx);
+      const kept = await this.trials.get(update.trialId, tx);
+      await this.audit.record(tx, {
+        action: 'registry.dismiss',
+        entityType: 'trial_update',
+        entityId: update.id,
+        label: kept.title,
+        trialId: kept.id,
+        details: {
+          revision: update.revision,
+          registryLastUpdated: update.registryLastUpdated,
+          fields: update.fields.map((f) => f.field),
+        },
+      });
+      return kept;
     });
   }
 

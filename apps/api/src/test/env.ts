@@ -17,3 +17,4 @@ process.env['LOG_LEVEL'] = 'silent';
 process.env['CTGOV_BASE_URL'] = 'http://127.0.0.1:4599/api/v2';
 process.env['CTGOV_TIMEOUT_MS'] = '1000';
 process.env['REGISTRY_SYNC_CRON'] = 'off'; // tests run syncs explicitly
+process.env['ADMIN_EMAILS'] = 'admin@test.dev'; // Week 9: signs up as an administrator

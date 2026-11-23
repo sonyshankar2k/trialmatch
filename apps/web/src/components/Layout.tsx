@@ -20,6 +20,11 @@ export function Layout() {
             <NavLink to="/patients" className={navClass}>
               Patients
             </NavLink>
+            {user?.role === 'admin' && (
+              <NavLink to="/audit" className={navClass}>
+                Audit log
+              </NavLink>
+            )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <span className="hidden text-slate-600 sm:inline">

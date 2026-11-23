@@ -31,8 +31,10 @@ import {
   pgErrorCode,
   PG_UNIQUE_VIOLATION,
 } from '../db/database';
-import type { Db } from '../db/database';
+import type { Db, Tx } from '../db/database';
 import { trialCriteria, trials, trialUpdates, users } from '../db/schema';
+import { AuditService, type AuditRecord } from '../audit/audit.service';
+import { changesBetween, createdWith } from '../audit/changes';
 
 type TrialRow = typeof trials.$inferSelect;
 /** Week 8: provenance columns set by the registry import and sync, never by the form. */
@@ -47,14 +49,41 @@ export type TrialProvenance = Partial<
 const pendingUpdateId = sql<
   number | null
 >`(select ${trialUpdates.id} from ${trialUpdates} where ${trialUpdates.trialId} = ${trials.id} and ${trialUpdates.status} = 'pending')`;
-export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+export type { Tx } from '../db/database';
 
 /** `%` and `_` typed by a user are literal characters, not wildcards. */
 const likePattern = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
+/** Week 9: what the audit trail records of a trial (criteria as "I: text" lines). */
+const AUDITED = [
+  'nctId',
+  'title',
+  'condition',
+  'phase',
+  'status',
+  'sponsor',
+  'summary',
+  'minAge',
+  'maxAge',
+  'sex',
+  'criteria',
+] as const;
+const audited = (t: Trial) => ({
+  ...t,
+  criteria: t.criteria.map(
+    (c) => `${c.type === 'inclusion' ? 'I' : 'E'}: ${c.text}`,
+  ),
+});
+
+/** How a save is recorded: a plain edit by default; Week 8's registry Apply says so. */
+export type TrialAuditEvent = Pick<AuditRecord, 'action' | 'details'>;
+
 @Injectable()
 export class TrialsService {
-  constructor(@InjectDb() private readonly db: Db) {}
+  constructor(
+    @InjectDb() private readonly db: Db,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(
     query: z.output<typeof TrialListQuerySchema>,
@@ -153,7 +182,19 @@ export class TrialsService {
           })
           .returning();
         await this.replaceCriteria(tx, trial.id, criteria);
-        return this.get(trial.id, tx);
+        const created = await this.get(trial.id, tx);
+        await this.audit.record(tx, {
+          action:
+            provenance.source === 'clinicaltrials_gov'
+              ? 'trial.import'
+              : 'trial.create',
+          entityType: 'trial',
+          entityId: created.id,
+          label: created.title,
+          trialId: created.id,
+          changes: createdWith(audited(created), AUDITED),
+        });
+        return created;
       }),
     );
   }
@@ -169,10 +210,18 @@ export class TrialsService {
     input: z.output<typeof TrialUpdateSchema>,
     provenance: TrialProvenance = {},
     db: Db | Tx = this.db,
+    event: TrialAuditEvent = { action: 'trial.update' },
   ): Promise<Trial> {
     const { version, criteria, ...fields } = input;
     const result = await this.uniqueNct(() =>
       db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ id: trials.id })
+          .from(trials)
+          .where(and(eq(trials.id, id), eq(trials.version, version)))
+          .for('update');
+        if (!locked) return null;
+        const before = await this.get(id, tx);
         const [updated] = await tx
           .update(trials)
           .set({
@@ -185,7 +234,17 @@ export class TrialsService {
           .returning({ id: trials.id });
         if (!updated) return null;
         if (criteria) await this.replaceCriteria(tx, id, criteria);
-        return this.get(id, tx);
+        const after = await this.get(id, tx);
+        await this.audit.record(tx, {
+          ...event,
+          entityType: 'trial',
+          entityId: id,
+          label: after.title,
+          trialId: id,
+          changes: changesBetween(audited(before), audited(after), AUDITED),
+          details: { ...event.details, version: after.version },
+        });
+        return after;
       }),
     );
     if (result) return result;
@@ -193,11 +252,23 @@ export class TrialsService {
   }
 
   async remove(id: number, version: number): Promise<void> {
-    const deleted = await this.db
-      .delete(trials)
-      .where(and(eq(trials.id, id), eq(trials.version, version)))
-      .returning({ id: trials.id });
-    if (!deleted.length) throw new VersionConflict(await this.get(id));
+    const deleted = await this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .delete(trials)
+        .where(and(eq(trials.id, id), eq(trials.version, version)))
+        .returning({ id: trials.id, title: trials.title, nctId: trials.nctId });
+      if (row)
+        await this.audit.record(tx, {
+          action: 'trial.delete',
+          entityType: 'trial',
+          entityId: id,
+          label: row.title,
+          trialId: id,
+          details: { nctId: row.nctId },
+        });
+      return row;
+    });
+    if (!deleted) throw new VersionConflict(await this.get(id));
   }
 
   /** Criteria are numbered within their type, in the order given: I1, I2… / E1, E2… */

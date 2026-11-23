@@ -156,6 +156,7 @@ export async function seedDemoData(db: Db): Promise<void> {
         email: 'alice@trialmatch.dev',
         displayName: 'Alice Chen',
         passwordHash,
+        role: 'admin', // Week 9: the demo admin, who can open the audit log
       },
       { email: 'bob@trialmatch.dev', displayName: 'Bob Patel', passwordHash },
     ])

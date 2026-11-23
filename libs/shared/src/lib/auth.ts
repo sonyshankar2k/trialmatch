@@ -20,10 +20,15 @@ export const RegisterSchema = z.object({
 });
 export type RegisterInput = z.infer<typeof RegisterSchema>;
 
+/** Week 9: administrators can also read the audit log. */
+export const USER_ROLES = ['coordinator', 'admin'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
 export interface User {
   id: number;
   email: string;
   displayName: string;
+  role: UserRole;
 }
 
 export interface AuthResponse {
